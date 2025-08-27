@@ -28,12 +28,12 @@ async function getPhotoBuffer(bot, fileId) {
     return buffer;
 }
 
-async function handleChatCommand(commandMsg, bot, BOT_ID, config) {
+async function handleChatCommand(commandMsg, bot, BOT_ID, config, replyToId) {
     const chatId = commandMsg.chat.id;
     try {
-        const conversationHistory = await getConversationHistory(chatId, commandMsg.message_id);
+        const conversationHistory = await getConversationHistory(chatId, commandMsg);
 
-        const contents = await Promise.all(
+        let contents = await Promise.all(
             conversationHistory.map(async (turn) => {
                 const parts = [];
                 for (const fileId of turn.imageFileIds) {
@@ -51,8 +51,11 @@ async function handleChatCommand(commandMsg, bot, BOT_ID, config) {
             })
         );
 
-        if (contents.length === 0 || contents[contents.length - 1].parts.length === 0) {
-            const sentMsg = await bot.sendMessage(chatId, "⚠️ 메시지가 비어있습니다.", { reply_to_message_id: commandMsg.message_id });
+        // parts가 비어있는 비유효 턴을 제거하되, 사용자의 마지막 프롬프트(명령어) 턴은 유지합니다.
+        contents = contents.filter((turn, index) => turn.parts.length > 0 || index === contents.length - 1);
+
+        if (contents.length === 0) {
+            const sentMsg = await bot.sendMessage(chatId, "⚠️ 메시지가 비어있습니다.", { reply_to_message_id: replyToId });
             logMessage(sentMsg, BOT_ID, 'chat');
             return;
         }
@@ -63,7 +66,7 @@ async function handleChatCommand(commandMsg, bot, BOT_ID, config) {
             { codeExecution: {} },
         ];
         const httpOptions = {
-            timeout: 120000, // 타임아웃 120초
+            timeout: 120000,
         };
         const generationConfig = {
             thinkingConfig: {
@@ -81,18 +84,18 @@ async function handleChatCommand(commandMsg, bot, BOT_ID, config) {
         const result = await generateFromHistory(config.geminiProModel, request, config.googleApiKey);
 
         if (result.error) {
-            const sentMsg = await bot.sendMessage(chatId, `😥 응답 생성 실패: ${result.error}`, { reply_to_message_id: commandMsg.message_id });
+            const sentMsg = await bot.sendMessage(chatId, `😥 응답 생성 실패: ${result.error}`, { reply_to_message_id: replyToId });
             logMessage(sentMsg, BOT_ID, 'chat');
         } else if (result.text) {
-            const sentMsg = await bot.sendMessage(chatId, result.text, { reply_to_message_id: commandMsg.message_id });
+            const sentMsg = await bot.sendMessage(chatId, result.text, { reply_to_message_id: replyToId });
             logMessage(sentMsg, BOT_ID, 'chat');
         } else {
-             const sentMsg = await bot.sendMessage(chatId, "🤔 모델이 텍스트 응답을 생성하지 않았습니다.", { reply_to_message_id: commandMsg.message_id });
+             const sentMsg = await bot.sendMessage(chatId, "🤔 모델이 텍스트 응답을 생성하지 않았습니다.", { reply_to_message_id: replyToId });
              logMessage(sentMsg, BOT_ID, 'chat');
         }
     } catch (error) {
         console.error("채팅 명령어 처리 중 오류:", error);
-        const sentMsg = await bot.sendMessage(chatId, "죄송합니다, 알 수 없는 오류가 발생했습니다.", { reply_to_message_id: commandMsg.message_id });
+        const sentMsg = await bot.sendMessage(chatId, "죄송합니다, 알 수 없는 오류가 발생했습니다.", { reply_to_message_id: replyToId });
         logMessage(sentMsg, BOT_ID, 'chat');
     }
 }
@@ -103,5 +106,23 @@ export async function processChatCommand(msg, bot, BOT_ID, config) {
         logMessage(sentMsg, BOT_ID);
         return;
     }
-    await handleChatCommand(msg, bot, BOT_ID, config);
+
+    const replyToId = msg.message_id;
+    let promptSourceMsg = msg;
+
+    const text = msg.text || msg.caption || '';
+    const commandOnlyRegex = /^\/gemini(?:@\w+bot)?\s*$/;
+    const originalMsg = msg.reply_to_message;
+
+    // 명령어만 있고, 메시지 자체에 사진/문서가 없으며, 다른 사용자의 메시지에 대한 답장일 때
+    if (commandOnlyRegex.test(text) && !msg.photo && !msg.document && originalMsg && originalMsg.from.id !== BOT_ID) {
+        const isValidTarget = originalMsg.text || originalMsg.caption || originalMsg.photo || originalMsg.document || originalMsg.forward_from || originalMsg.forward_from_chat;
+
+        if (isValidTarget) {
+            console.log(`[gemini] 암시적 프롬프트 감지: 유효한 원본 메시지를 프롬프트 소스로 사용합니다.`);
+            promptSourceMsg = originalMsg;
+        }
+    }
+
+    await handleChatCommand(promptSourceMsg, bot, BOT_ID, config, replyToId);
 }

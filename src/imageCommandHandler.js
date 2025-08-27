@@ -33,16 +33,17 @@ async function handleImageCommand(commandMsg, albumMessages = [], bot, BOT_ID, c
     const chatId = commandMsg.chat.id;
 
     try {
-        const conversationHistory = await getConversationHistory(chatId, commandMsg.message_id);
-        const allImageFileIds = new Set();
-        conversationHistory.forEach(turn => turn.imageFileIds.forEach(id => allImageFileIds.add(id)));
-        albumMessages.forEach(msg => {
-            if (msg.photo) allImageFileIds.add(msg.photo[msg.photo.length - 1].file_id);
-        });
+        const conversationHistory = await getConversationHistory(chatId, commandMsg);
 
-        const contents = await Promise.all(
+        let contents = await Promise.all(
             conversationHistory.map(async (turn) => {
                 const parts = [];
+                // 각 턴에 포함된 이미지 파일 처리
+                for (const fileId of turn.imageFileIds) {
+                    const imageBuffer = await getPhotoBuffer(bot, fileId);
+                    parts.push({ inlineData: { data: imageBuffer.toString('base64'), mimeType: 'image/jpeg' } });
+                }
+                // 각 턴의 텍스트 처리
                 const commandRegex = /^\/image(?:@\w+bot)?\s*/;
                 const cleanText = turn.text.replace(commandRegex, '').trim();
                 if (cleanText) parts.push({ text: cleanText });
@@ -50,29 +51,36 @@ async function handleImageCommand(commandMsg, albumMessages = [], bot, BOT_ID, c
             })
         );
 
-        if (allImageFileIds.size > 0 && contents.length > 0) {
-            const imageParts = [];
-            for (const fileId of allImageFileIds) {
-                const imageBuffer = await getPhotoBuffer(bot, fileId);
-                imageParts.push({ inlineData: { data: imageBuffer.toString('base64'), mimeType: 'image/jpeg' } });
+        // 앨범으로 함께 전송된 사진들을 마지막 턴에 추가합니다.
+        // conversationHistory에 이미 포함된 사진은 중복 추가하지 않습니다.
+        if (albumMessages.length > 0 && contents.length > 0) {
+            const historyFileIds = new Set(conversationHistory.flatMap(turn => turn.imageFileIds));
+            const albumFileIds = albumMessages
+                .map(m => m.photo ? m.photo[m.photo.length - 1].file_id : null)
+                .filter(id => id && !historyFileIds.has(id)); // 중복 제외
+
+            if (albumFileIds.length > 0) {
+                const imageParts = await Promise.all(albumFileIds.map(async fileId => {
+                    const imageBuffer = await getPhotoBuffer(bot, fileId);
+                    return { inlineData: { data: imageBuffer.toString('base64'), mimeType: 'image/jpeg' } };
+                }));
+                const lastTurn = contents[contents.length - 1];
+                lastTurn.parts = [...imageParts, ...lastTurn.parts];
             }
-            const lastTurn = contents[contents.length - 1];
-            lastTurn.parts = [...imageParts, ...lastTurn.parts];
         }
 
-        const lastTurn = contents.length > 0 ? contents[contents.length - 1] : { parts: [] };
-        const hasTextInLastTurn = lastTurn.parts.some(p => p.text);
-        if (!hasTextInLastTurn && allImageFileIds.size === 0) {
-             const sentMsg = await bot.sendMessage(chatId, "⚠️ 프롬프트가 비어있습니다.", { reply_to_message_id: commandMsg.message_id });
+        // parts가 비어있는 비유효 턴을 제거하되, 사용자의 마지막 프롬프트(명령어) 턴은 유지합니다.
+        contents = contents.filter((turn, index) => turn.parts.length > 0 || index === contents.length - 1);
+
+        if (contents.length === 0) {
+             const sentMsg = await bot.sendMessage(chatId, "⚠️ 프롬프트로 삼을 유효한 메시지가 없습니다.", { reply_to_message_id: commandMsg.message_id });
              logMessage(sentMsg, BOT_ID, 'image');
              return;
         }
 
         const request = {
             contents: contents,
-            config: {
-                // 이미지 생성 시에는 특별한 도구나 설정이 없으므로 비워둠
-            },
+            config: {},
         };
         const result = await generateFromHistory(config.imageModelName, request, config.googleApiKey);
 
@@ -82,7 +90,7 @@ async function handleImageCommand(commandMsg, albumMessages = [], bot, BOT_ID, c
             logMessage(sentMsg, BOT_ID, 'image');
         } else if (result.text) {
             console.log(`[MODEL_TEXT] ChatID(${chatId}):`, result.text);
-            const message = `*모델 응답:*\n\n${result.text}`;
+            const message = `${result.text}`;
             const sentMsg = await bot.sendMessage(chatId, message, { reply_to_message_id: commandMsg.message_id, parse_mode: 'Markdown' });
             logMessage(sentMsg, BOT_ID, 'image');
         } else if (result.images && result.images.length > 0) {
@@ -104,9 +112,10 @@ async function handleImageCommand(commandMsg, albumMessages = [], bot, BOT_ID, c
 }
 
 function processAlbum(group, bot, BOT_ID, config) {
-    const commandMsg = group.messages.find(m => m.caption?.startsWith('/image')) || group.messages[0];
-    console.log(`앨범 ${commandMsg.media_group_id} 처리 시작 (${group.messages.length}개 사진)`);
-    handleImageCommand(commandMsg, group.messages, bot, BOT_ID, config);
+    const commandMsgTemplate = group.messages.find(m => m.caption?.startsWith('/image')) || group.messages[0];
+    const replyToId = commandMsgTemplate.message_id;
+    console.log(`앨범 ${commandMsgTemplate.media_group_id} 처리 시작 (${group.messages.length}개 사진)`);
+    handleImageCommand(commandMsgTemplate, group.messages, bot, BOT_ID, config, replyToId);
 }
 
 export async function processImageCommand(msg, bot, BOT_ID, config) {
@@ -128,6 +137,22 @@ export async function processImageCommand(msg, bot, BOT_ID, config) {
             mediaGroupCache.delete(msg.media_group_id);
         }, 1500);
     } else {
-        handleImageCommand(msg, [], bot, BOT_ID, config);
+        const replyToId = msg.message_id;
+        let promptSourceMsg = msg;
+
+        const text = msg.text || msg.caption || '';
+        const commandOnlyRegex = /^\/image(?:@\w+bot)?\s*$/;
+        const originalMsg = msg.reply_to_message;
+
+        // 명령어만 있고, 메시지 자체에 사진/문서가 없으며, 다른 사용자의 메시지에 대한 답장일 때
+        if (commandOnlyRegex.test(text) && !msg.photo && !msg.document && originalMsg && originalMsg.from.id !== BOT_ID) {
+            const isValidTarget = originalMsg.text || originalMsg.caption || originalMsg.photo || originalMsg.document || originalMsg.forward_from || originalMsg.forward_from_chat;
+            if (isValidTarget) {
+                console.log(`[image] 암시적 프롬프트 감지: 원본 메시지를 프롬프트 소스로 사용합니다.`);
+                promptSourceMsg = originalMsg;
+            }
+        }
+
+        await handleImageCommand(promptSourceMsg, [], bot, BOT_ID, config, replyToId);
     }
 }
