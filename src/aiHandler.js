@@ -6,7 +6,7 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 export async function generateFromHistory(modelName, request, googleApiKey) {
     const genAI = new GoogleGenAI(googleApiKey);
-    console.log(util.inspect(request, false, null, true));
+    // console.log(util.inspect(request, false, null, true));
 
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
         try {
@@ -17,12 +17,17 @@ export async function generateFromHistory(modelName, request, googleApiKey) {
                 ...request,
             });
 
-            const finishReason = result.candidates?.[0]?.finishReason;
-            if (finishReason === 'PROHIBITED_CONTENT' || finishReason === 'SAFETY') {
-                return {error: '요청하신 내용은 안전 정책에 따라 생성할 수 없습니다. 🧐'};
+            // 1. 프롬프트 자체가 안전 필터에 의해 차단되었는지 먼저 확인
+            if (result.promptFeedback?.blockReason) {
+                console.warn(`API 프롬프트 차단됨: ${result.promptFeedback.blockReason}`);
+                return { error: '요청하신 내용은 안전 정책에 따라 처리할 수 없습니다.' };
             }
 
-            console.log(util.inspect(result.candidates, false, null, true));
+            // 2. 개별 후보(candidate)가 차단되었는지 확인 (기존 로직)
+            const finishReason = result.candidates?.[0]?.finishReason;
+            if (finishReason === 'PROHIBITED_CONTENT' || finishReason === 'SAFETY') {
+                return {error: '모델이 생성한 내용이 안전 정책에 따라 차단되었습니다.'};
+            }
 
             const outputImages = result.candidates.map(candidate => {
                 const imagePart = candidate.content?.parts?.find(part => part.inlineData);
@@ -33,20 +38,20 @@ export async function generateFromHistory(modelName, request, googleApiKey) {
                 };
             }).filter(Boolean);
 
+            const parts = result.candidates?.[0]?.content?.parts;
+
+            // 최종 응답 객체 생성
+            const finalResponse = {};
             if (outputImages.length > 0) {
-                return {images: outputImages};
+                finalResponse.images = outputImages;
             }
 
-            // 모델이 Tool을 사용한 복잡한 응답(executableCode, codeExecutionResult 등 포함)에 대응하기 위해
-            // parts 배열 전체에서 text 속성을 가진 부분을 모두 찾아 결합합니다.
-            const parts = result.candidates?.[0]?.content?.parts;
             if (Array.isArray(parts)) {
-                const textContent = parts
-                    .filter(part => typeof part.text === 'string')
-                    .map(part => part.text)
-                    .join('');
+                finalResponse.parts = parts; // 텍스트 외 다른 파트들도 포함하여 반환
+            }
 
-                if (textContent) return { text: textContent };
+            if (Object.keys(finalResponse).length > 0) {
+                return finalResponse;
             }
 
             console.error("API 응답에 이미지 또는 텍스트 데이터가 없습니다.", JSON.stringify(result, null, 2));

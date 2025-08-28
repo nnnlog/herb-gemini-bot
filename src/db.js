@@ -1,165 +1,240 @@
 import sqlite3 from 'sqlite3';
 
 const db = new sqlite3.Database('./telegram_log.db', (err) => {
-    if (err) {
-        console.error("데이터베이스 연결 실패:", err.message);
-    } else {
-        console.log("로컬 SQLite 데이터베이스에 성공적으로 연결되었습니다.");
-    }
+    if (err) console.error("데이터베이스 연결 실패:", err.message);
+    else console.log("로컬 SQLite 데이터베이스에 성공적으로 연결되었습니다.");
 });
 
+// DB 초기화 함수
 export function initDb() {
-    const messagesSql = `
-    CREATE TABLE IF NOT EXISTS messages (
+    const createRawMessagesTable = `
+    CREATE TABLE IF NOT EXISTS raw_messages (
         message_id INTEGER NOT NULL,
         chat_id INTEGER NOT NULL,
         user_id INTEGER,
-        is_bot BOOLEAN,
-        text TEXT,
-        reply_to_message_id INTEGER,
-        command_type TEXT, -- 'image', 'chat' 등 명령어 종류 저장
         timestamp INTEGER,
+        data TEXT NOT NULL,
         PRIMARY KEY (chat_id, message_id)
     )`;
 
-    const filesSql = `
-    CREATE TABLE IF NOT EXISTS message_files (
+    const createAttachmentsTable = `
+    CREATE TABLE IF NOT EXISTS attachments (
+        file_unique_id TEXT PRIMARY KEY,
         file_id TEXT NOT NULL,
-        message_id INTEGER NOT NULL,
+        type TEXT NOT NULL,
+        file_name TEXT,
+        file_size INTEGER,
+        mime_type TEXT,
+        width INTEGER,
+        height INTEGER
+    )`;
+
+    const createMessageAttachmentsTable = `
+    CREATE TABLE IF NOT EXISTS message_attachments (
         chat_id INTEGER NOT NULL,
-        file_type TEXT NOT NULL, 
-        FOREIGN KEY (chat_id, message_id) REFERENCES messages(chat_id, message_id),
-        PRIMARY KEY (chat_id, message_id, file_id)
+        message_id INTEGER NOT NULL,
+        file_unique_id TEXT NOT NULL,
+        FOREIGN KEY (chat_id, message_id) REFERENCES raw_messages(chat_id, message_id),
+        FOREIGN KEY (file_unique_id) REFERENCES attachments(file_unique_id),
+        PRIMARY KEY (chat_id, message_id, file_unique_id)
+    )`;
+
+    const createMessageMetadataTable = `
+    CREATE TABLE IF NOT EXISTS message_metadata (
+        chat_id INTEGER NOT NULL,
+        message_id INTEGER NOT NULL,
+        command_type TEXT,
+        FOREIGN KEY (chat_id, message_id) REFERENCES raw_messages(chat_id, message_id),
+        PRIMARY KEY (chat_id, message_id)
     )`;
 
     db.serialize(() => {
-        db.run(messagesSql, (err) => {
-            if (err) console.error("messages 테이블 생성 실패:", err);
-        });
-        db.run(filesSql, (err) => {
-            if (err) console.error("message_files 테이블 생성 실패:", err);
-        });
+        db.run(createRawMessagesTable);
+        db.run(createAttachmentsTable);
+        db.run(createMessageAttachmentsTable);
+        db.run(createMessageMetadataTable);
     });
 }
 
+// 메시지 로깅 메인 함수
 export async function logMessage(msg, botId, commandType = null) {
-    // 1. 답장한 원본 메시지가 있고, DB에 없는 경우 먼저 저장합니다.
+    // 1. 원본 메시지 저장
+    const rawSql = `INSERT OR REPLACE INTO raw_messages (message_id, chat_id, user_id, timestamp, data) VALUES (?, ?, ?, ?, ?)`;
+    await dbRun(rawSql, [msg.message_id, msg.chat.id, msg.from?.id, msg.date, JSON.stringify(msg)]);
+
+    // 2. 첨부파일 정보 저장
+    const files = getFilesFromMsg(msg);
+    for (const file of files) {
+        const attachSql = `INSERT OR IGNORE INTO attachments (file_unique_id, file_id, type, file_name, file_size, mime_type, width, height) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`;
+        await dbRun(attachSql, [
+            file.file_unique_id, file.file_id, file.type, file.file_name,
+            file.file_size, file.mime_type, file.width, file.height
+        ]);
+        const linkSql = `INSERT OR IGNORE INTO message_attachments (chat_id, message_id, file_unique_id) VALUES (?, ?, ?)`;
+        await dbRun(linkSql, [msg.chat.id, msg.message_id, file.file_unique_id]);
+    }
+
+    // 3. 프로그램 메타데이터 저장
+    if (commandType) {
+        const metaSql = `INSERT OR REPLACE INTO message_metadata (chat_id, message_id, command_type) VALUES (?, ?, ?)`;
+        await dbRun(metaSql, [msg.chat.id, msg.message_id, commandType]);
+    }
+
+    // 4. 답장 메시지가 DB에 없는 경우 재귀적으로 저장
     if (msg.reply_to_message) {
         const originalMsg = msg.reply_to_message;
         const existingMsg = await getMessage(originalMsg.chat.id, originalMsg.message_id);
         if (!existingMsg) {
             console.log(`[logMessage] DB에 없는 원본 메시지(${originalMsg.message_id})를 저장합니다.`);
-            await logMessage(originalMsg, botId); // 재귀 호출로 원본 메시지 저장
+            await logMessage(originalMsg, botId);
         }
     }
+}
 
-    // 2. 현재 메시지를 저장합니다. (Promise로 감싸서 비동기 완료를 보장)
+// 특정 메시지 정보 가져오기 (JSON 파싱 포함)
+export async function getMessage(chatId, messageId) {
+    const row = await dbGet(`SELECT data FROM raw_messages WHERE chat_id = ? AND message_id = ?`, [chatId, messageId]);
+    return row ? JSON.parse(row.data) : null;
+}
+
+// 특정 메시지의 메타데이터 가져오기
+export async function getMessageMetadata(chatId, messageId) {
+    return dbGet(`SELECT * FROM message_metadata WHERE chat_id = ? AND message_id = ?`, [chatId, messageId]);
+}
+
+// 앨범 ID로 그룹 전체 메시지 가져오기
+export function getAlbumMessages(chatId, mediaGroupId) {
     return new Promise((resolve, reject) => {
-        const msgSql = `INSERT OR REPLACE INTO messages (message_id, chat_id, user_id, is_bot, text, reply_to_message_id, command_type, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`;
-        const msgParams = [
-            msg.message_id, msg.chat.id, msg.from.id, msg.from.id === botId,
-            msg.text || msg.caption,
-            msg.reply_to_message ? msg.reply_to_message.message_id : null,
-            commandType, msg.date
-        ];
-
-        db.run(msgSql, msgParams, function (err) {
-            if (err) {
-                console.error("messages 테이블 저장 실패:", err);
-                return reject(err);
-            }
-
-            if (msg.photo || (msg.document && msg.document.mime_type.startsWith('image/'))) {
-                const fileSql = `INSERT OR IGNORE INTO message_files (file_id, message_id, chat_id, file_type) VALUES (?, ?, ?, ?)`;
-                const file = msg.photo ? msg.photo[msg.photo.length - 1] : msg.document;
-                const fileType = msg.photo ? 'photo' : 'document';
-                const fileParams = [file.file_id, msg.message_id, msg.chat.id, fileType];
-
-                db.run(fileSql, fileParams, function (err) {
-                    if (err) {
-                        console.error("message_files 테이블 저장 실패:", err);
-                        return reject(err);
-                    }
-                    resolve();
-                });
-            } else {
-                resolve();
-            }
+        const sql = `SELECT data FROM raw_messages WHERE chat_id = ? AND json_extract(data, '$.media_group_id') = ? ORDER BY message_id ASC`;
+        db.all(sql, [chatId, mediaGroupId], (err, rows) => {
+            if (err) reject(err);
+            else resolve(rows.map(r => JSON.parse(r.data)));
         });
     });
 }
 
-export function getMessage(chatId, messageId) {
+// 특정 메시지의 첨부파일 정보 가져오기
+async function getAttachmentsForMessage(chatId, messageId) {
+    const sql = `
+        SELECT a.* FROM attachments a
+        JOIN message_attachments ma ON a.file_unique_id = ma.file_unique_id
+        WHERE ma.chat_id = ? AND ma.message_id = ?
+    `;
+    return dbAll(sql, [chatId, messageId]);
+}
+
+// 대화 기록 생성 함수 (새로운 스키마에 맞춰 수정)
+export async function getConversationHistory(chatId, startMsg) {
+    let history = [];
+    let currentMsg = startMsg;
+    const HISTORY_DEPTH_LIMIT = 15;
+    const seenMessageIds = new Set();
+
+    while (currentMsg && history.length < HISTORY_DEPTH_LIMIT && !seenMessageIds.has(currentMsg.message_id)) {
+        seenMessageIds.add(currentMsg.message_id);
+
+        let files = [];
+        // 메시지에 media_group_id가 있으면, 그룹 전체의 첨부파일을 가져옵니다.
+        if (currentMsg.media_group_id) {
+            const groupMessages = await getAlbumMessages(chatId, currentMsg.media_group_id);
+            for (const groupMsg of groupMessages) {
+                // 다른 그룹 멤버들도 처리한 것으로 간주하여 중복 순회를 방지합니다.
+                seenMessageIds.add(groupMsg.message_id);
+                const groupFiles = await getAttachmentsForMessage(chatId, groupMsg.message_id);
+                files.push(...groupFiles);
+            }
+        } else {
+            // 미디어 그룹이 아닌 경우, 해당 메시지의 파일만 가져옵니다.
+            const liveFiles = getFilesFromMsg(currentMsg);
+            const dbFiles = await getAttachmentsForMessage(chatId, currentMsg.message_id);
+            const allFiles = [...liveFiles, ...dbFiles];
+            const uniqueFileIds = new Set();
+            files = allFiles.filter(file => {
+                if (!file || uniqueFileIds.has(file.file_unique_id)) return false;
+                uniqueFileIds.add(file.file_unique_id);
+                return true;
+            });
+        }
+
+        history.unshift({
+            role: currentMsg.from?.is_bot ? 'model' : 'user',
+            text: currentMsg.text || currentMsg.caption || '',
+            files: files
+        });
+
+        // 다음 메시지로 이동
+        if (currentMsg.reply_to_message) {
+            // 실시간 reply 객체가 있으면 DB 조회 전에 그것을 우선 사용
+            currentMsg = currentMsg.reply_to_message;
+        } else {
+            // live 객체가 끝나면 DB에 저장된 full message 객체를 기반으로 다음 메시지를 찾음
+            const fullMsgFromDb = await getMessage(chatId, currentMsg.message_id);
+            if (fullMsgFromDb && fullMsgFromDb.reply_to_message) {
+                currentMsg = await getMessage(chatId, fullMsgFromDb.reply_to_message.message_id);
+            } else {
+                currentMsg = null;
+            }
+        }
+    }
+    return history;
+}
+
+// 헬퍼: 메시지에서 파일 정보 추출
+function getFilesFromMsg(msg) {
+    const files = [];
+    if (msg.photo) {
+        const photo = msg.photo[msg.photo.length - 1];
+        files.push({
+            type: 'photo',
+            file_unique_id: photo.file_unique_id,
+            file_id: photo.file_id,
+            file_name: `${photo.file_unique_id}.jpg`,
+            file_size: photo.file_size,
+            mime_type: 'image/jpeg',
+            width: photo.width,
+            height: photo.height,
+        });
+    }
+    if (msg.document) {
+        const doc = msg.document;
+        files.push({
+            type: 'document',
+            file_unique_id: doc.file_unique_id,
+            file_id: doc.file_id,
+            file_name: doc.file_name,
+            file_size: doc.file_size,
+            mime_type: doc.mime_type,
+            width: doc.thumbnail?.width,
+            height: doc.thumbnail?.height,
+        });
+    }
+    return files;
+}
+
+// Promise-based DB helpers for async/await
+function dbRun(sql, params) {
     return new Promise((resolve, reject) => {
-        const sql = `SELECT * FROM messages WHERE chat_id = ? AND message_id = ?`;
-        db.get(sql, [chatId, messageId], (err, row) => {
+        db.run(sql, params, function(err) {
+            if (err) reject(err);
+            else resolve(this);
+        });
+    });
+}
+
+function dbGet(sql, params) {
+    return new Promise((resolve, reject) => {
+        db.get(sql, params, (err, row) => {
             if (err) reject(err);
             else resolve(row);
         });
     });
 }
 
-function getMessageFiles(chatId, messageId) {
+function dbAll(sql, params) {
     return new Promise((resolve, reject) => {
-        const sql = `SELECT file_id FROM message_files WHERE chat_id = ? AND message_id = ?`;
-        db.all(sql, [chatId, messageId], (err, rows) => {
+        db.all(sql, params, (err, rows) => {
             if (err) reject(err);
-            else resolve(rows.map(r => r.file_id));
+            else resolve(rows);
         });
     });
-}
-
-function getFileIdsFromMsg(msg) {
-    const fileIds = [];
-    if (msg.photo) {
-        fileIds.push(msg.photo[msg.photo.length - 1].file_id);
-    }
-    if (msg.document && msg.document.mime_type.startsWith('image/')) {
-        fileIds.push(msg.document.file_id);
-    }
-    return fileIds;
-}
-
-export async function getConversationHistory(chatId, startMsg) {
-    let history = [];
-    let currentMsg = startMsg;
-    const HISTORY_DEPTH_LIMIT = 15;
-    const seenMessageIds = new Set(); // 무한 루프 방지
-
-    while (currentMsg && history.length < HISTORY_DEPTH_LIMIT && !seenMessageIds.has(currentMsg.message_id)) {
-        seenMessageIds.add(currentMsg.message_id);
-
-        // DB에서 추가 정보(command_type 등)를 가져오려고 시도합니다.
-        const messageRow = await getMessage(chatId, currentMsg.message_id);
-
-        // 라이브 메시지 객체의 데이터를 기본으로 사용하고, DB 데이터로 보강합니다.
-        const text = messageRow?.text ?? (currentMsg.text || currentMsg.caption) ?? '';
-        const isBot = currentMsg.from.is_bot; // 라이브 객체의 is_bot이 더 신뢰성 높음
-
-        // 라이브 객체에서 파일 ID를 먼저 가져옵니다.
-        let fileIds = getFileIdsFromMsg(currentMsg);
-        // 라이브 객체에 파일이 없고 DB에만 있는 경우(오래된 메시지)를 위해 DB에서도 조회합니다.
-        if (fileIds.length === 0 && messageRow) {
-            fileIds = await getMessageFiles(chatId, messageRow.message_id);
-        }
-
-        history.unshift({
-            role: isBot ? 'model' : 'user',
-            text: text,
-            imageFileIds: fileIds
-        });
-
-        // 답장 체인을 따라 올라갑니다.
-        if (currentMsg.reply_to_message) {
-            currentMsg = currentMsg.reply_to_message;
-        } else if (messageRow && messageRow.reply_to_message_id) {
-            // 라이브 객체 체인이 끝나면, DB의 ID를 이용해 계속 탐색합니다.
-            const nextMsgRow = await getMessage(chatId, messageRow.reply_to_message_id);
-            // DB row를 루프에서 계속 사용할 수 있도록 pseudo-message 객체로 변환합니다.
-            currentMsg = nextMsgRow ? { message_id: nextMsgRow.message_id, from: { is_bot: nextMsgRow.is_bot }, text: nextMsgRow.text, reply_to_message_id: nextMsgRow.reply_to_message_id } : null;
-        } else {
-            currentMsg = null;
-        }
-    }
-    return history;
 }

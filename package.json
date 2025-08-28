@@ -17,7 +17,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@google/genai": "^1.15.0",
+    "@google/genai": "^1.16.0",
     "dotenv": "^17.2.1",
     "marked": "^16.2.1",
     "node-telegram-bot-api": "^0.66.0",

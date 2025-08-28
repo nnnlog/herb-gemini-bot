@@ -1,70 +1,35 @@
-import { isUserAuthorized } from './auth.js';
-import { generateFromHistory } from './aiHandler.js';
-import { logMessage, getConversationHistory } from './db.js';
-import { marked } from 'marked';
+import {isUserAuthorized} from './auth.js';
+import {generateFromHistory} from './aiHandler.js';
+import {logMessage, getConversationHistory} from './db.js';
+import {buildContents, sendLongMessage} from './utils.js';
+import {marked} from 'marked';
 
-const imageCache = new Map();
-const CACHE_MAX_SIZE = 100;
-
-function streamToBuffer(stream) {
-    return new Promise((resolve, reject) => {
-        const chunks = [];
-        stream.on('data', (chunk) => chunks.push(chunk));
-        stream.on('end', () => resolve(Buffer.concat(chunks)));
-        stream.on('error', reject);
-    });
-}
-
-async function getPhotoBuffer(bot, fileId) {
-    if (imageCache.has(fileId)) {
-        return imageCache.get(fileId);
-    }
-    const fileStream = bot.getFileStream(fileId);
-    const buffer = await streamToBuffer(fileStream);
-    if (imageCache.size >= CACHE_MAX_SIZE) {
-        const oldestKey = imageCache.keys().next().value;
-        imageCache.delete(oldestKey);
-    }
-    imageCache.set(fileId, buffer);
-    return buffer;
-}
-
-async function handleChatCommand(commandMsg, bot, BOT_ID, config, replyToId) {
+async function handleChatCommand(commandMsg, albumMessages = [], bot, BOT_ID, config, replyToId) {
     const chatId = commandMsg.chat.id;
     try {
+        const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100 MiB
         const conversationHistory = await getConversationHistory(chatId, commandMsg);
+        let {contents, totalSize} = await buildContents(bot, conversationHistory, commandMsg, albumMessages, 'gemini');
 
-        let contents = await Promise.all(
-            conversationHistory.map(async (turn) => {
-                const parts = [];
-                for (const fileId of turn.imageFileIds) {
-                    const imageBuffer = await getPhotoBuffer(bot, fileId);
-                    parts.push({
-                        inlineData: { data: imageBuffer.toString('base64'), mimeType: 'image/jpeg' }
-                    });
-                }
-                const commandRegex = /^\/gemini(?:@\w+bot)?\s*/;
-                const cleanText = turn.text.replace(commandRegex, '').trim();
-                if (cleanText) {
-                    parts.push({ text: cleanText });
-                }
-                return { role: turn.role, parts };
-            })
-        );
+        if (totalSize > MAX_FILE_SIZE) {
+            const sentMsg = await bot.sendMessage(chatId, `총 파일 용량이 100MB를 초과할 수 없습니다. (현재: ${Math.round(totalSize / 1024 / 1024)}MB)`, {reply_to_message_id: replyToId});
+            logMessage(sentMsg, BOT_ID, 'error');
+            return;
+        }
 
-        // parts가 비어있는 비유효 턴을 제거하되, 사용자의 마지막 프롬프트(명령어) 턴은 유지합니다.
+        // parts가 비어있는 비유효 턴을 제거하되, 사용자의 마지막 프롬프트(명령어) 턴은 유지
         contents = contents.filter((turn, index) => turn.parts.length > 0 || index === contents.length - 1);
 
         if (contents.length === 0) {
-            const sentMsg = await bot.sendMessage(chatId, "⚠️ 메시지가 비어있습니다.", { reply_to_message_id: replyToId });
-            logMessage(sentMsg, BOT_ID, 'chat');
+            const sentMsg = await bot.sendMessage(chatId, "메시지가 비어있습니다.", {reply_to_message_id: replyToId});
+            logMessage(sentMsg, BOT_ID, 'error');
             return;
         }
 
         const tools = [
-            { googleSearch: {} },
-            { urlContext: {} },
-            { codeExecution: {} },
+            {googleSearch: {}},
+            {urlContext: {}},
+            {codeExecution: {}},
         ];
         const httpOptions = {
             timeout: 120000,
@@ -85,70 +50,45 @@ async function handleChatCommand(commandMsg, bot, BOT_ID, config, replyToId) {
         const result = await generateFromHistory(config.geminiProModel, request, config.googleApiKey);
 
         if (result.error) {
-            const sentMsg = await bot.sendMessage(chatId, `😥 응답 생성 실패: ${result.error}`, { reply_to_message_id: replyToId });
-            logMessage(sentMsg, BOT_ID, 'chat');
-        } else if (result.text) {
-            const sentMsg = await bot.sendMessage(chatId, marked.parseInline(result.text), { reply_to_message_id: replyToId, parse_mode: 'HTML' });
+            const sentMsg = await bot.sendMessage(chatId, `응답 생성 실패: ${result.error}`, {reply_to_message_id: replyToId});
+            logMessage(sentMsg, BOT_ID, 'error');
+        } else if (result.parts?.length > 0) {
+            let fullResponse = '';
+            for (const part of result.parts) {
+                if (part.text) {
+                    fullResponse += part.text;
+                } else if (part.executableCode) {
+                    const code = part.executableCode.code;
+                    fullResponse += `\n\n<b>[코드 실행]</b>\n<pre><code class="language-python">${escapeHtml(code)}</code></pre>`;
+                } else if (part.codeExecutionResult) {
+                    const output = part.codeExecutionResult.output;
+                    const outcome = part.codeExecutionResult.outcome;
+                    const outcomeIcon = outcome === 'OUTCOME_OK' ? '✅' : '❌';
+                    fullResponse += `\n<b>[실행 결과 ${outcomeIcon}]</b>\n<pre>${escapeHtml(output)}</pre>`;
+                }
+            }
+            const sentMsg = await sendLongMessage(bot, chatId, marked.parseInline(fullResponse.trim() || ''), replyToId);
             logMessage(sentMsg, BOT_ID, 'chat');
         } else {
-             const sentMsg = await bot.sendMessage(chatId, "🤔 모델이 텍스트 응답을 생성하지 않았습니다.", { reply_to_message_id: replyToId });
-             logMessage(sentMsg, BOT_ID, 'chat');
+            const sentMsg = await bot.sendMessage(chatId, "모델이 텍스트 응답을 생성하지 않았습니다.", {reply_to_message_id: replyToId});
+            logMessage(sentMsg, BOT_ID, 'error');
         }
     } catch (error) {
         console.error("채팅 명령어 처리 중 오류:", error);
-        const sentMsg = await bot.sendMessage(chatId, "죄송합니다, 알 수 없는 오류가 발생했습니다.", { reply_to_message_id: replyToId });
-        logMessage(sentMsg, BOT_ID, 'chat');
+        const sentMsg = await bot.sendMessage(chatId, "죄송합니다, 알 수 없는 오류가 발생했습니다.", {reply_to_message_id: replyToId});
+        logMessage(sentMsg, BOT_ID, 'error');
+    } finally {
+        // 처리가 완료되면 성공/실패 여부와 관계없이 반응을 제거합니다.
+        bot.setMessageReaction(commandMsg.chat.id, replyToId, {reaction: []});
     }
 }
 
-export async function processChatCommand(msg, bot, BOT_ID, config) {
-    if (!isUserAuthorized(msg.chat.id, msg.from.id)) {
-        const sentMsg = await bot.sendMessage(msg.chat.id, "죄송합니다. 이 기능을 사용할 권한이 없습니다.", { reply_to_message_id: msg.message_id });
-        logMessage(sentMsg, BOT_ID);
-        return;
-    }
-
-    const text = msg.text || msg.caption || '';
-    const commandOnlyRegex = /^\/gemini(?:@\w+bot)?\s*$/;
-    const hasMedia = msg.photo || msg.document;
-
-    // --- 프롬프트 예외 처리 시작 ---
-    if (commandOnlyRegex.test(text) && !hasMedia) {
-        const originalMsg = msg.reply_to_message;
-
-        if (!originalMsg) {
-            // 시나리오 A: 답장 없이 명령어만 보낸 경우
-            const sentMsg = await bot.sendMessage(msg.chat.id, "⚠️ 명령어와 함께 프롬프트를 입력하거나, 내용이 있는 메시지에 답장하며 사용해주세요.", { reply_to_message_id: msg.message_id });
-            logMessage(sentMsg, BOT_ID);
-            return;
-        }
-
-        const isOriginalFromBot = originalMsg.from.id === BOT_ID;
-        const hasOriginalMedia = originalMsg.photo || originalMsg.document;
-        const anyCommandRegex = /^\/(gemini|image)(?:@\w+bot)?\s*$/;
-        const isOriginalCommandOnly = anyCommandRegex.test(originalMsg.text || originalMsg.caption || '');
-
-        if (isOriginalFromBot || (isOriginalCommandOnly && !hasOriginalMedia)) {
-            // 시나리오 B: 봇의 응답이나 다른 명령어에 다시 명령어로 답장한 경우
-            const sentMsg = await bot.sendMessage(msg.chat.id, "⚠️ 봇의 응답이나 다른 명령어에는 내용을 입력하여 답장해야 합니다.", { reply_to_message_id: msg.message_id });
-            logMessage(sentMsg, BOT_ID);
-            return;
-        }
-    }
-
-    const replyToId = msg.message_id;
-    let promptSourceMsg = msg;
-    const originalMsg = msg.reply_to_message;
-
-    // 명령어만 있고, 메시지 자체에 사진/문서가 없으며, 다른 사용자의 메시지에 대한 답장일 때
-    if (commandOnlyRegex.test(text) && !msg.photo && !msg.document && originalMsg && originalMsg.from.id !== BOT_ID) {
-        const isValidTarget = originalMsg.text || originalMsg.caption || originalMsg.photo || originalMsg.document || originalMsg.forward_from || originalMsg.forward_from_chat;
-
-        if (isValidTarget) {
-            console.log(`[gemini] 암시적 프롬프트 감지: 유효한 원본 메시지를 프롬프트 소스로 사용합니다.`);
-            promptSourceMsg = originalMsg;
-        }
-    }
-
-    await handleChatCommand(promptSourceMsg, bot, BOT_ID, config, replyToId);
+// HTML 태그 문자를 이스케이프하는 헬퍼 함수
+function escapeHtml(text) {
+    return text
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
 }
+
+export {handleChatCommand};
