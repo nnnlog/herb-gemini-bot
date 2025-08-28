@@ -1,7 +1,16 @@
 import dotenv from 'dotenv';
 dotenv.config();
 
-export const config = {
+export interface Config {
+    telegramToken: string | undefined;
+    googleApiKey: string | undefined;
+    imageModelName: string | undefined;
+    geminiProModel: string | undefined;
+    allowedChannelIds: string[];
+    trustedUserIds: string[];
+}
+
+export const config: Config = {
     telegramToken: process.env.TELEGRAM_BOT_TOKEN,
     googleApiKey: process.env.GOOGLE_API_KEY,
     imageModelName: process.env.IMAGE_MODEL_NAME,

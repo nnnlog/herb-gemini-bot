@@ -1,20 +1,38 @@
-# 1. 베이스 이미지 선택 (Node.js 22 LTS)
-FROM node:22
+# Stage 1: Build the TypeScript application
+FROM node:22 AS build
 
-# 2. pnpm 활성화 (Node.js에 내장된 corepack 사용)
-RUN corepack enable
-
-# 3. 컨тей너 내 작업 디렉터리 설정
+# Set the working directory
 WORKDIR /usr/src/app
 
-# 4. 의존성 설치를 위해 package.json과 pnpm-lock.yaml을 먼저 복사
-COPY package.json pnpm-lock.yaml ./
+# Copy package.json and package-lock.json for dependency installation
+# Using a lock file is a best practice for reproducible builds
+COPY package*.json ./
 
-# 5. pnpm을 사용하여 프로덕션 의존성 설치
-RUN npm install --omit=dev
+# Install all dependencies, including devDependencies for building
+RUN npm install
 
-# 6. 나머지 소스 코드를 작업 디렉터리로 복사
+# Copy the rest of the source code
 COPY . .
 
-# 7. 컨тей너가 시작될 때 실행할 명령어 정의
-CMD ["node", "bot.js"]
+# Compile TypeScript to JavaScript
+RUN npm run build
+
+# --- #
+
+# Stage 2: Create the final production image
+FROM node:22
+
+# Set the working directory
+WORKDIR /usr/src/app
+
+# Copy package.json and package-lock.json
+COPY package*.json ./
+
+# Install only production dependencies
+RUN npm install --omit=dev
+
+# Copy the compiled JavaScript output from the build stage
+COPY --from=build /usr/src/app/dist ./dist
+
+# Define the command to run the application
+CMD [ "node", "dist/bot.js" ]

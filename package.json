@@ -2,11 +2,13 @@
   "name": "telegram-gemini-bot",
   "version": "1.0.0",
   "description": "A Telegram bot to generate images using Google Gemini AI.",
-  "main": "bot.js",
+  "main": "dist/bot.js",
   "type": "module",
   "packageManager": "pnpm@10.15.0",
   "scripts": {
-    "start": "node bot.js"
+    "build": "tsc",
+    "start": "node dist/bot.js",
+    "dev": "tsc -w & node --watch dist/bot.js"
   },
   "keywords": [
     "telegram",
@@ -22,6 +24,12 @@
     "marked": "^16.2.1",
     "node-telegram-bot-api": "^0.66.0",
     "sqlite3": "^5.1.7"
+  },
+  "devDependencies": {
+    "@types/marked": "^6.0.0",
+    "@types/node": "^20.12.12",
+    "@types/node-telegram-bot-api": "^0.64.10",
+    "typescript": "^5.9.2"
   },
   "pnpm": {}
 }
