@@ -37,9 +37,16 @@ export async function generateFromHistory(modelName, request, googleApiKey) {
                 return {images: outputImages};
             }
 
-            const textPart = result.candidates?.[0]?.content?.parts?.[0]?.text;
-            if (textPart) {
-                return {text: textPart};
+            // 모델이 Tool을 사용한 복잡한 응답(executableCode, codeExecutionResult 등 포함)에 대응하기 위해
+            // parts 배열 전체에서 text 속성을 가진 부분을 모두 찾아 결합합니다.
+            const parts = result.candidates?.[0]?.content?.parts;
+            if (Array.isArray(parts)) {
+                const textContent = parts
+                    .filter(part => typeof part.text === 'string')
+                    .map(part => part.text)
+                    .join('');
+
+                if (textContent) return { text: textContent };
             }
 
             console.error("API 응답에 이미지 또는 텍스트 데이터가 없습니다.", JSON.stringify(result, null, 2));

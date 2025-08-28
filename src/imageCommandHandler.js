@@ -1,6 +1,7 @@
 import { isUserAuthorized } from './auth.js';
 import { generateFromHistory } from './aiHandler.js';
 import { logMessage, getConversationHistory } from './db.js';
+import { marked } from 'marked';
 
 const imageCache = new Map();
 const CACHE_MAX_SIZE = 100;
@@ -90,8 +91,8 @@ async function handleImageCommand(commandMsg, albumMessages = [], bot, BOT_ID, c
             logMessage(sentMsg, BOT_ID, 'image');
         } else if (result.text) {
             console.log(`[MODEL_TEXT] ChatID(${chatId}):`, result.text);
-            const message = `${result.text}`;
-            const sentMsg = await bot.sendMessage(chatId, message, { reply_to_message_id: commandMsg.message_id, parse_mode: 'Markdown' });
+            const message = `*모델 응답:*\n\n${result.text}`;
+            const sentMsg = await bot.sendMessage(chatId, marked.parseInline(message), { reply_to_message_id: commandMsg.message_id, parse_mode: 'HTML' });
             logMessage(sentMsg, BOT_ID, 'image');
         } else if (result.images && result.images.length > 0) {
             if (result.images.length > 1) {
@@ -125,6 +126,34 @@ export async function processImageCommand(msg, bot, BOT_ID, config) {
         return;
     }
 
+    const text = msg.text || msg.caption || '';
+    const commandOnlyRegex = /^\/image(?:@\w+bot)?\s*$/;
+    const hasMedia = msg.photo || msg.document;
+
+    // --- 프롬프트 예외 처리 시작 ---
+    if (commandOnlyRegex.test(text) && !hasMedia) {
+        const originalMsg = msg.reply_to_message;
+
+        if (!originalMsg) {
+            // 시나리오 A: 답장 없이 명령어만 보낸 경우
+            const sentMsg = await bot.sendMessage(msg.chat.id, "⚠️ 명령어와 함께 프롬프트를 입력하거나, 내용이 있는 메시지에 답장하며 사용해주세요.", { reply_to_message_id: msg.message_id });
+            logMessage(sentMsg, BOT_ID);
+            return;
+        }
+
+        const isOriginalFromBot = originalMsg.from.id === BOT_ID;
+        const hasOriginalMedia = originalMsg.photo || originalMsg.document;
+        const anyCommandRegex = /^\/(gemini|image)(?:@\w+bot)?\s*$/;
+        const isOriginalCommandOnly = anyCommandRegex.test(originalMsg.text || originalMsg.caption || '');
+
+        if (isOriginalFromBot || (isOriginalCommandOnly && !hasOriginalMedia)) {
+            // 시나리오 B: 봇의 응답이나 다른 명령어에 다시 명령어로 답장한 경우
+            const sentMsg = await bot.sendMessage(msg.chat.id, "⚠️ 봇의 응답이나 다른 명령어에는 내용을 입력하여 답장해야 합니다.", { reply_to_message_id: msg.message_id });
+            logMessage(sentMsg, BOT_ID);
+            return;
+        }
+    }
+
     if (msg.media_group_id) {
         if (!mediaGroupCache.has(msg.media_group_id)) {
             mediaGroupCache.set(msg.media_group_id, { messages: [] });
@@ -140,8 +169,6 @@ export async function processImageCommand(msg, bot, BOT_ID, config) {
         const replyToId = msg.message_id;
         let promptSourceMsg = msg;
 
-        const text = msg.text || msg.caption || '';
-        const commandOnlyRegex = /^\/image(?:@\w+bot)?\s*$/;
         const originalMsg = msg.reply_to_message;
 
         // 명령어만 있고, 메시지 자체에 사진/문서가 없으며, 다른 사용자의 메시지에 대한 답장일 때
