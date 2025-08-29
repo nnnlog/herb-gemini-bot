@@ -10,7 +10,7 @@ type CommandType = 'image' | 'chat';
 // 1. 프롬프트 유효성 검사
 async function validatePrompt(msg: TelegramBot.Message, albumMessages: TelegramBot.Message[], bot: TelegramBot, BOT_ID: number): Promise<boolean> {
     const text = msg.text || msg.caption || '';
-    const commandOnlyRegex = /^\/(gemini|image)(?:@\w+bot)?\s*$/;
+    const commandOnlyRegex = /^\/(gemini|image|img)(?:@\w+bot)?\s*$/;
     const isCommandOnly = commandOnlyRegex.test(text);
     const hasMedia = msg.photo || msg.document || albumMessages.length > 0;
 
@@ -40,7 +40,7 @@ async function validatePrompt(msg: TelegramBot.Message, albumMessages: TelegramB
 // 2. 프롬프트 소스 결정
 function determinePromptSource(msg: TelegramBot.Message, albumMessages: TelegramBot.Message[], BOT_ID: number): TelegramBot.Message {
     const text = msg.text || msg.caption || '';
-    const commandOnlyRegex = /^\/(gemini|image)(?:@\w+bot)?\s*$/;
+    const commandOnlyRegex = /^\/(gemini|image|img)(?:@\w+bot)?\s*$/;
     const isCommandOnly = commandOnlyRegex.test(text);
     const hasMedia = msg.photo || msg.document || albumMessages.length > 0;
 
@@ -48,7 +48,8 @@ function determinePromptSource(msg: TelegramBot.Message, albumMessages: Telegram
         const originalMsg = msg.reply_to_message;
         const isValidTarget = originalMsg.text || originalMsg.caption || originalMsg.photo || originalMsg.document || originalMsg.forward_from || originalMsg.forward_from_chat;
         if (isValidTarget) {
-            console.log(`[${text.slice(1)}] 암시적 프롬프트 감지: 원본 메시지를 프롬프트 소스로 사용합니다.`);
+            const commandName = text.split('@')[0].slice(1);
+            console.log(`[${commandName}] 암시적 프롬프트 감지: 원본 메시지를 프롬프트 소스로 사용합니다.`);
             return originalMsg;
         }
     }
@@ -59,9 +60,12 @@ function determinePromptSource(msg: TelegramBot.Message, albumMessages: Telegram
 async function determineCommandType(msg: TelegramBot.Message, BOT_ID: number): Promise<CommandType | null> {
     const text = msg.text || msg.caption || '';
 
+    const imageRegex = /^\/(image|img)(?:@\w+bot)?/;
+    const chatRegex = /^\/(gemini)(?:@\w+bot)?/;
+
     // 명시적 명령어
-    if (text.startsWith('/image')) return 'image';
-    if (text.startsWith('/gemini')) return 'chat';
+    if (imageRegex.test(text)) return 'image';
+    if (chatRegex.test(text) || text.startsWith('...')) return 'chat';
 
     // 암시적 대화 연속
     if (msg.reply_to_message?.from?.id === BOT_ID) {
