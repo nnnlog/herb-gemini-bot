@@ -1,6 +1,6 @@
 import TelegramBot from "node-telegram-bot-api";
 import { Readable } from "stream";
-import { ConversationTurn } from "./db.js";
+import { ConversationTurn } from "../services/db.js";
 import { Content, Part } from "@google/genai";
 
 // --- 타입 정의 ---
