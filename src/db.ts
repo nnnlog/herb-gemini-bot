@@ -111,7 +111,7 @@ export async function logMessage(msg: TelegramBot.Message, botId: number, comman
         const existingMsg = await getMessage(originalMsg.chat.id, originalMsg.message_id);
         if (!existingMsg) {
             console.log(`[logMessage] DB에 없는 원본 메시지(${originalMsg.message_id})를 저장합니다.`);
-            await logMessage(originalMsg, botId);
+            logMessage(originalMsg, botId);
         }
     }
 }

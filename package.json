@@ -8,7 +8,7 @@
   "scripts": {
     "build": "tsc",
     "start": "node dist/bot.js",
-    "dev": "tsc -w & node --watch dist/bot.js"
+    "dev": "concurrently \"tsc -w\" \"node --watch dist/bot.js\""
   },
   "keywords": [
     "telegram",
@@ -29,6 +29,7 @@
     "@types/marked": "^6.0.0",
     "@types/node": "^20.12.12",
     "@types/node-telegram-bot-api": "^0.64.10",
+    "concurrently": "^9.2.1",
     "typescript": "^5.9.2"
   },
   "pnpm": {}

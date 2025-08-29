@@ -19,7 +19,8 @@ const bot = new TelegramBot(config.telegramToken, { polling: true });
 
 async function processCommand(msg: TelegramBot.Message, albumMessages: TelegramBot.Message[], bot: TelegramBot, BOT_ID: number, config: Config) {
     if (!msg.from || !isUserAuthorized(msg.chat.id, msg.from.id)) {
-        return await logMessage(msg, BOT_ID);
+        logMessage(msg, BOT_ID);
+        return;
     }
 
     const text = msg.text || msg.caption || '';
@@ -33,7 +34,7 @@ async function processCommand(msg: TelegramBot.Message, albumMessages: TelegramB
         const originalMsg = msg.reply_to_message;
         if (!originalMsg) {
             const sentMsg = await bot.sendMessage(msg.chat.id, "명령어와 함께 프롬프트를 입력하거나, 내용이 있는 메시지에 답장하며 사용해주세요.", { reply_to_message_id: msg.message_id });
-            await logMessage(sentMsg, BOT_ID, 'error');
+            logMessage(sentMsg, BOT_ID, 'error');
             return;
         }
 
@@ -43,7 +44,7 @@ async function processCommand(msg: TelegramBot.Message, albumMessages: TelegramB
         const isOriginalCommandOnly = commandOnlyRegex.test(originalMsg.text || originalMsg.caption || '');
         if (isOriginalFromBot || (isOriginalCommandOnly && !hasOriginalMedia)) {
             const sentMsg = await bot.sendMessage(msg.chat.id, "봇의 응답이나 다른 명령어에는 내용을 입력하여 답장해야 합니다.", { reply_to_message_id: msg.message_id });
-            await logMessage(sentMsg, BOT_ID, 'error');
+            logMessage(sentMsg, BOT_ID, 'error');
             return;
         }
     }
@@ -65,7 +66,7 @@ async function processCommand(msg: TelegramBot.Message, albumMessages: TelegramB
     else if (text.startsWith('/gemini')) commandType = 'chat';
 
     if (commandType) {
-        await logMessage(msg, BOT_ID, commandType);
+        logMessage(msg, BOT_ID, commandType);
         bot.setMessageReaction(msg.chat.id, msg.message_id, { reaction: [{ type: 'emoji', emoji: '👍' }] });
 
         if (commandType === 'image') {
@@ -79,19 +80,19 @@ async function processCommand(msg: TelegramBot.Message, albumMessages: TelegramB
     if (msg.reply_to_message?.from?.id === BOT_ID) {
         const originalMsgMeta = await getMessageMetadata(msg.chat.id, msg.reply_to_message.message_id);
         if (originalMsgMeta?.command_type === 'chat') {
-            await logMessage(msg, BOT_ID, 'chat');
+            logMessage(msg, BOT_ID, 'chat');
             bot.setMessageReaction(msg.chat.id, msg.message_id, { reaction: [{ type: 'emoji', emoji: '👍' }] });
             console.log(`'chat' 대화의 연속으로 판단하여 응답합니다.`);
             return handleChatCommand(msg, [], bot, BOT_ID, config, msg.message_id);
         } else if (originalMsgMeta?.command_type === 'image') {
-            await logMessage(msg, BOT_ID, 'image');
+            logMessage(msg, BOT_ID, 'image');
             bot.setMessageReaction(msg.chat.id, msg.message_id, { reaction: [{ type: 'emoji', emoji: '👍' }] });
             console.log(`'image' 대화의 연속으로 판단하여 응답합니다.`);
             return handleImageCommand(msg, [], bot, BOT_ID, config, msg.message_id);
         }
     }
 
-    await logMessage(msg, BOT_ID);
+    logMessage(msg, BOT_ID);
 }
 
 
@@ -121,7 +122,7 @@ bot.getMe().then(me => {
 - 앨범(여러 사진)을 첨부하여 명령을 내릴 수 있습니다.
 `;
             const sentMsg = await bot.sendMessage(msg.chat.id, helpText, { parse_mode: 'Markdown' });
-            await logMessage(sentMsg, BOT_ID, 'start');
+            logMessage(sentMsg, BOT_ID, 'start');
             return;
         }
 
@@ -134,7 +135,7 @@ bot.getMe().then(me => {
             if (group.timer) clearTimeout(group.timer);
             group.timer = setTimeout(async () => {
                 for (const groupMsg of group.messages) {
-                    await logMessage(groupMsg, BOT_ID);
+                    logMessage(groupMsg, BOT_ID);
                 }
 
                 const commandMsg = group.messages.find((m: TelegramBot.Message) => (m.caption || '').startsWith('/')) || group.messages[0];

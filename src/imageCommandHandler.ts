@@ -15,7 +15,7 @@ async function handleImageCommand(commandMsg: TelegramBot.Message, albumMessages
 
         if (totalSize > MAX_FILE_SIZE) {
             const sentMsg = await bot.sendMessage(chatId, `총 파일 용량이 100MB를 초과할 수 없습니다. (현재: ${Math.round(totalSize / 1024 / 1024)}MB)`, {reply_to_message_id: replyToId});
-            await logMessage(sentMsg, BOT_ID, 'error');
+            logMessage(sentMsg, BOT_ID, 'error');
             return;
         }
 
@@ -24,7 +24,7 @@ async function handleImageCommand(commandMsg: TelegramBot.Message, albumMessages
 
         if (contents.length === 0) {
             const sentMsg = await bot.sendMessage(chatId, "프롬프트로 삼을 유효한 메시지가 없습니다.", {reply_to_message_id: replyToId});
-            await logMessage(sentMsg, BOT_ID, 'error');
+            logMessage(sentMsg, BOT_ID, 'error');
             return;
         }
 
@@ -38,7 +38,7 @@ async function handleImageCommand(commandMsg: TelegramBot.Message, albumMessages
         if (result.error) {
             console.error(`[MODEL_ERROR] ChatID(${chatId}):`, result.error);
             const sentMsg = await bot.sendMessage(chatId, `생성 실패: ${result.error}`, {reply_to_message_id: replyToId});
-            await logMessage(sentMsg, BOT_ID, 'error');
+            logMessage(sentMsg, BOT_ID, 'error');
             return;
         }
 
@@ -59,7 +59,7 @@ async function handleImageCommand(commandMsg: TelegramBot.Message, albumMessages
                 });
                 const sentMessages = await bot.sendMediaGroup(chatId, media, {reply_to_message_id: replyToId});
                 for(const sentMsg of sentMessages) {
-                    await logMessage(sentMsg, BOT_ID, 'image');
+                    logMessage(sentMsg, BOT_ID, 'image');
                 }
             } else {
                 const sentMsg = await bot.sendPhoto(chatId, result.images![0].buffer, {
@@ -67,23 +67,23 @@ async function handleImageCommand(commandMsg: TelegramBot.Message, albumMessages
                     parse_mode: caption ? 'HTML' : undefined,
                     reply_to_message_id: replyToId
                 });
-                await logMessage(sentMsg, BOT_ID, 'image');
+                logMessage(sentMsg, BOT_ID, 'image');
             }
             console.log(`성공: 사용자(ID: ${commandMsg.from?.id})에게 ${result.images!.length}개의 콘텐츠 전송 완료.`);
         } else if (hasText) {
             const sentMsg = await sendLongMessage(bot, chatId, marked.parseInline(result.text!) as string, replyToId);
-            await logMessage(sentMsg, BOT_ID, 'image');
+            logMessage(sentMsg, BOT_ID, 'image');
         }
     } catch (error: unknown) {
         console.error("이미지 명령어 처리 중 오류:", error);
         const sentMsg = await bot.sendMessage(chatId, "죄송합니다, 알 수 없는 오류가 발생했습니다.", {reply_to_message_id: replyToId});
         if (error instanceof Error) {
-            await logMessage(sentMsg, BOT_ID, error.message);
+            logMessage(sentMsg, BOT_ID, error.message);
         } else {
-            await logMessage(sentMsg, BOT_ID, 'unknown error');
+            logMessage(sentMsg, BOT_ID, 'unknown error');
         }
     } finally {
-        await bot.setMessageReaction(commandMsg.chat.id, replyToId, {reaction: []});
+        bot.setMessageReaction(commandMsg.chat.id, replyToId, {reaction: []});
     }
 }
 
