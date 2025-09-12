@@ -65,7 +65,7 @@ async function determineCommandType(msg: TelegramBot.Message, BOT_ID: number): P
 
     // 명시적 명령어
     if (imageRegex.test(text)) return 'image';
-    if (chatRegex.test(text) || text.startsWith('...')) return 'chat';
+    if (chatRegex.test(text)) return 'chat';
 
     // 암시적 대화 연속
     if (msg.reply_to_message?.from?.id === BOT_ID) {
