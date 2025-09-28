@@ -46,8 +46,11 @@ async function handleSummarizeCommand(commandMsg: TelegramBot.Message, albumMess
         const request: GenerateContentParameters = {
             model: "gemini-2.5-pro", // 요구사항에 따라 모델 지정
             contents: contentPreparationResult.contents!,
+            systemInstruction: {
+                role: 'system',
+                parts: [{ text: systemInstruction }]
+            },
             config: {
-                systemInstruction: systemInstruction,
                 httpOptions: {
                     timeout: 120000,
                 },

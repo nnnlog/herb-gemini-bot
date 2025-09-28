@@ -70,6 +70,7 @@ export function initDb() {
         chat_id INTEGER NOT NULL,
         message_id INTEGER NOT NULL,
         command_type TEXT,
+        prompt_command TEXT,
         FOREIGN KEY (chat_id, message_id) REFERENCES raw_messages(chat_id, message_id),
         PRIMARY KEY (chat_id, message_id)
     )`;
