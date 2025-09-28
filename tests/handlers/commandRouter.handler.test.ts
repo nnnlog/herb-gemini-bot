@@ -32,12 +32,16 @@ jest.unstable_mockModule('../../src/handlers/chatCommandHandler.js', () => ({
   handleChatCommand: mockHandleChatCommand,
 }));
 
+const mockHandleSummarizeCommand = jest.fn();
+jest.unstable_mockModule('../../src/handlers/summarizeCommandHandler.js', () => ({
+    handleSummarizeCommand: mockHandleSummarizeCommand,
+}));
+
 
 // --- Test Suite ---
 describe('Command Router', () => {
   let commandRouter: typeof import('../../src/handlers/commandRouter.js');
   let mockBot: TelegramBot;
-  // FIX: Create a type-safe mock config object
   const mockConfig: Config = {
     telegramToken: 'test-token',
     googleApiKey: 'test-api-key',
@@ -59,14 +63,9 @@ describe('Command Router', () => {
   } as TelegramBot.Message);
 
   beforeEach(async () => {
-    // Dynamically import the module under test after mocks are set up
     commandRouter = await import('../../src/handlers/commandRouter.js');
-
-    // Clear all mocks and set default behaviors
     jest.clearAllMocks();
     mockIsUserAuthorized.mockReturnValue(true);
-
-    // Setup mock bot
     mockBot = {
       sendMessage: jest.fn().mockResolvedValue({ message_id: 1 }),
       setMessageReaction: jest.fn().mockResolvedValue(true),
@@ -77,7 +76,6 @@ describe('Command Router', () => {
     mockIsUserAuthorized.mockReturnValue(false);
     const msg = createMockMessage(1, '/gemini hello');
     await commandRouter.routeCommand(msg, [], mockBot, BOT_ID, mockConfig);
-    // The original code calls logMessage with 2 arguments here.
     expect(mockLogMessage).toHaveBeenCalledWith(msg, BOT_ID);
     expect(mockHandleChatCommand).not.toHaveBeenCalled();
     expect(mockHandleImageCommand).not.toHaveBeenCalled();
@@ -142,5 +140,29 @@ describe('Command Router', () => {
     const commandMsg = createMockMessage(2, '/gemini', forwardedMsg);
     await commandRouter.routeCommand(commandMsg, [], mockBot, BOT_ID, mockConfig);
     expect(mockHandleChatCommand).toHaveBeenCalledWith(forwardedMsg, [], mockBot, BOT_ID, mockConfig, commandMsg.message_id);
+  });
+
+  // --- /summarize command tests ---
+
+  it('should call summarize command handler for /summarize command', async () => {
+    const msg = createMockMessage(1, '/summarize some text');
+    await commandRouter.routeCommand(msg, [], mockBot, BOT_ID, mockConfig);
+    expect(mockHandleSummarizeCommand).toHaveBeenCalledWith(msg, [], mockBot, BOT_ID, mockConfig, msg.message_id);
+    expect(mockHandleChatCommand).not.toHaveBeenCalled();
+  });
+
+  it('should call summarize command handler for /sum alias', async () => {
+    const msg = createMockMessage(1, '/sum some text');
+    await commandRouter.routeCommand(msg, [], mockBot, BOT_ID, mockConfig);
+    expect(mockHandleSummarizeCommand).toHaveBeenCalledWith(msg, [], mockBot, BOT_ID, mockConfig, msg.message_id);
+  });
+
+  it('should continue conversation as chat when replying to a summarize response', async () => {
+    const botSummarizeResponse = { ...createMockMessage(1, 'This is a summary.'), from: { id: BOT_ID, is_bot: true, first_name: 'Bot'} };
+    const userReply = createMockMessage(2, 'Thanks! Can you elaborate?', botSummarizeResponse);
+    mockGetMessageMetadata.mockResolvedValue({ command_type: 'chat', prompt_command: 'summarize' });
+    await commandRouter.routeCommand(userReply, [], mockBot, BOT_ID, mockConfig);
+    expect(mockHandleChatCommand).toHaveBeenCalledWith(userReply, [], mockBot, BOT_ID, mockConfig, userReply.message_id);
+    expect(mockHandleSummarizeCommand).not.toHaveBeenCalled();
   });
 });

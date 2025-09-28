@@ -1,89 +1,76 @@
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
-import { isUserAuthorized } from '../../src/services/auth.js';
-import { config } from '../../src/config.js';
+import type { Config } from '../../src/config.js';
 
-// isUserAuthorized가 의존하는 config 모듈을 모의 처리합니다.
-// 이를 통해 실제 .env 파일이나 설정 값에 구애받지 않고 테스트를 진행할 수 있습니다.
-jest.mock('../../src/config.js', () => ({
-  config: {
-    trustedUserIds: [],
+// Define a mock config object that can be manipulated in tests.
+// Note: The IDs are strings, matching the real config structure.
+const mockConfig: Partial<Config> = {
     allowedChannelIds: [],
-  },
+    trustedUserIds: [],
+};
+
+// Mock the config module BEFORE importing the service that depends on it.
+jest.unstable_mockModule('../../src/config.js', () => ({
+    config: mockConfig,
 }));
 
-// 모의 처리된 config 객체를 타입과 함께 가져옵니다.
-// as jest.Mocked<T>를 사용하면 타입스크립트에게 이 객체가 모의 객체임을 알려줄 수 있습니다.
-const mockedConfig = config as jest.Mocked<typeof config>;
+// --- Test Suite ---
+describe('Authorization Service', () => {
+    let isUserAuthorized: (chatId: number, userId: number) => boolean;
 
-describe('Auth Service - isUserAuthorized', () => {
+    // Before each test, dynamically import the module to get the version with the mock.
+    beforeEach(async () => {
+        const authService = await import('../../src/services/auth.js');
+        isUserAuthorized = authService.isUserAuthorized;
 
-  // 각 테스트 케이스가 실행되기 전에, 모의 config 값을 초기 상태로 리셋합니다.
-  // 이렇게 하면 테스트들이 서로에게 영향을 주지 않습니다.
-  beforeEach(() => {
-    mockedConfig.trustedUserIds = [];
-    mockedConfig.allowedChannelIds = [];
-  });
+        // Reset mock config to a default state for each test, using STRINGS for IDs.
+        mockConfig.allowedChannelIds = ['12345'];
+        mockConfig.trustedUserIds = ['54321'];
+    });
 
-  it('시나리오 1.1: 사용자 ID가 trustedUserIds에 포함되면 true를 반환해야 합니다.', () => {
-    // 준비 (Arrange)
-    mockedConfig.trustedUserIds = ['123', '456'];
-    const chatId = 999; // 관련 없는 채팅 ID
-    const userId = 123;   // 허용된 사용자 ID
+    it('should authorize a trusted user in any chat', () => {
+        const chatId = 99999; // A non-allowed channel
+        const userId = 54321; // A trusted user
+        expect(isUserAuthorized(chatId, userId)).toBe(true);
+    });
 
-    // 실행 (Act)
-    const result = isUserAuthorized(chatId, userId);
+    it('should authorize any user in an allowed channel', () => {
+        const chatId = 12345; // An allowed channel
+        const userId = 98765; // A non-trusted user
+        expect(isUserAuthorized(chatId, userId)).toBe(true);
+    });
 
-    // 단언 (Assert)
-    expect(result).toBe(true);
-  });
+    it('should not authorize a non-trusted user in a non-allowed channel', () => {
+        const chatId = 99999; // A non-allowed channel
+        const userId = 98765; // A non-trusted user
+        expect(isUserAuthorized(chatId, userId)).toBe(false);
+    });
 
-  it('시나리오 1.2: 채팅 ID가 allowedChannelIds에 포함되면 true를 반환해야 합니다.', () => {
-    // 준비 (Arrange)
-    mockedConfig.allowedChannelIds = ['-1001', '-1002'];
-    const chatId = -1001; // 허용된 채널 ID
-    const userId = 999;   // 관련 없는 사용자 ID
+    it('should authorize if trustedUserIds is empty and channel is allowed', () => {
+        mockConfig.trustedUserIds = [];
+        const chatId = 12345;
+        const userId = 11111;
+        expect(isUserAuthorized(chatId, userId)).toBe(true);
+    });
 
-    // 실행 (Act)
-    const result = isUserAuthorized(chatId, userId);
+    it('should not authorize if allowedChannelIds is empty and user is not trusted', () => {
+        mockConfig.allowedChannelIds = [];
+        const chatId = 99999;
+        const userId = 11111;
+        expect(isUserAuthorized(chatId, userId)).toBe(false);
+    });
 
-    // 단언 (Assert)
-    expect(result).toBe(true);
-  });
+    it('should authorize a trusted user even if allowedChannelIds is empty', () => {
+        mockConfig.allowedChannelIds = [];
+        const chatId = 99999;
+        const userId = 54321; // trusted user
+        expect(isUserAuthorized(chatId, userId)).toBe(true);
+    });
 
-  it('시나리오 1.3: 어떤 허용 목록에도 포함되지 않으면 false를 반환해야 합니다.', () => {
-    // 준비 (Arrange)
-    mockedConfig.trustedUserIds = ['123'];
-    mockedConfig.allowedChannelIds = ['-1001'];
-    const chatId = 999;   // 허용되지 않은 채널 ID
-    const userId = 999;   // 허용되지 않은 사용자 ID
-
-    // 실행 (Act)
-    const result = isUserAuthorized(chatId, userId);
-
-    // 단언 (Assert)
-    expect(result).toBe(false);
-  });
-
-  it('시나리오 1.4: 설정의 허용 목록이 비어있을 때 false를 반환해야 합니다.', () => {
-    // 준비 (Arrange)
-    // beforeEach에서 이미 목록이 비워진 상태입니다.
-    const chatId = 123;
-    const userId = -1001;
-
-    // 실행 (Act)
-    const result = isUserAuthorized(chatId, userId);
-
-    // 단언 (Assert)
-    expect(result).toBe(false);
-  });
-
-  it('시나리오 1.4 (엣지 케이스): 숫자형 ID와 문자열 목록을 올바르게 비교해야 합니다.', () => {
-    // 준비 (Arrange)
-    mockedConfig.trustedUserIds = ['123', '456'];
-    mockedConfig.allowedChannelIds = ['-1001', '-1002'];
-
-    // 실행 및 단언 (Act & Assert)
-    expect(isUserAuthorized(-999, 123)).toBe(true); // User ID 매치
-    expect(isUserAuthorized(-1001, 999)).toBe(true); // Chat ID 매치
-  });
+    it('should not authorize if both lists are empty', () => {
+        mockConfig.allowedChannelIds = [];
+        mockConfig.trustedUserIds = [];
+        const chatId = 12345;
+        const userId = 54321;
+        expect(isUserAuthorized(chatId, userId)).toBe(false);
+    });
 });

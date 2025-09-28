@@ -28,6 +28,8 @@ const mimeMap: { [key: string]: string } = {
     'go': 'text/x-go', 'rs': 'text/rust', 'html': 'text/html', 'css': 'text/css',
 };
 
+const ALL_COMMAND_REGEX = /^\/(gemini|image|img|summarize|sum)(?:@\w+bot)?\s*/;
+
 // --- 내부 헬퍼 함수 ---
 function streamToBuffer(stream: Readable): Promise<Buffer> {
     return new Promise((resolve, reject) => {
@@ -80,8 +82,8 @@ export async function buildContents(bot: TelegramBot, conversationHistory: Conve
             turn.files.forEach(file => totalSize += file.file_size || 0);
             const fileParts = await createFileParts(bot, turn.files);
             const parts: Part[] = [...fileParts];
-            const commandRegex = new RegExp(`^/${commandName}(?:@\\w+bot)?\\s*`);
-            const cleanText = turn.text.replace(commandRegex, '').trim();
+            // commandName 대신 모든 명령어를 처리하는 정규식 사용
+            const cleanText = turn.text.replace(ALL_COMMAND_REGEX, '').trim();
             if (cleanText) {
                 parts.push({ text: cleanText });
             }

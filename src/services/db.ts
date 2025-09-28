@@ -11,6 +11,7 @@ interface MessageMetadata {
     chat_id: number;
     message_id: number;
     command_type: string | null;
+    prompt_command: string | null;
 }
 
 interface Attachment {
@@ -82,7 +83,7 @@ export function initDb() {
 }
 
 // 메시지 로깅 메인 함수
-export async function logMessage(msg: TelegramBot.Message, botId: number, commandType: string | null = null) {
+export async function logMessage(msg: TelegramBot.Message, botId: number, commandType: string | null = null, promptCommand: string | null = null) {
     // 1. 원본 메시지 저장
     const rawSql = `INSERT OR REPLACE INTO raw_messages (message_id, chat_id, user_id, timestamp, data) VALUES (?, ?, ?, ?, ?)`;
     await dbRun(rawSql, [msg.message_id, msg.chat.id, msg.from?.id ?? null, msg.date, JSON.stringify(msg)]);
@@ -101,8 +102,10 @@ export async function logMessage(msg: TelegramBot.Message, botId: number, comman
 
     // 3. 프로그램 메타데이터 저장
     if (commandType) {
-        const metaSql = `INSERT OR REPLACE INTO message_metadata (chat_id, message_id, command_type) VALUES (?, ?, ?)`;
-        await dbRun(metaSql, [msg.chat.id, msg.message_id, commandType]);
+        // promptCommand가 명시적으로 제공되지 않으면 commandType과 동일하게 설정
+        const finalPromptCommand = promptCommand ?? commandType;
+        const metaSql = `INSERT OR REPLACE INTO message_metadata (chat_id, message_id, command_type, prompt_command) VALUES (?, ?, ?, ?)`;
+        await dbRun(metaSql, [msg.chat.id, msg.message_id, commandType, finalPromptCommand]);
     }
 
     // 4. 답장 메시지가 DB에 없는 경우 재귀적으로 저장
@@ -111,7 +114,7 @@ export async function logMessage(msg: TelegramBot.Message, botId: number, comman
         const existingMsg = await getMessage(originalMsg.chat.id, originalMsg.message_id);
         if (!existingMsg) {
             console.log(`[logMessage] DB에 없는 원본 메시지(${originalMsg.message_id})를 저장합니다.`);
-            logMessage(originalMsg, botId);
+            await logMessage(originalMsg, botId);
         }
     }
 }

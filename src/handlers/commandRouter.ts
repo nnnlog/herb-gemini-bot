@@ -4,14 +4,16 @@ import { getMessageMetadata, logMessage } from '../services/db.js';
 import { handleImageCommand } from './imageCommandHandler.js';
 import { handleChatCommand } from './chatCommandHandler.js';
 import { isUserAuthorized } from '../services/auth.js';
+import { handleSummarizeCommand } from "./summarizeCommandHandler.js";
 
-type CommandType = 'image' | 'chat';
+type CommandType = 'image' | 'chat' | 'summarize';
+
+const ALL_COMMAND_REGEX = /^\/(gemini|image|img|summarize|sum)(?:@\w+bot)?\s*$/;
 
 // 1. 프롬프트 유효성 검사
 async function validatePrompt(msg: TelegramBot.Message, albumMessages: TelegramBot.Message[], bot: TelegramBot, BOT_ID: number): Promise<boolean> {
     const text = msg.text || msg.caption || '';
-    const commandOnlyRegex = /^\/(gemini|image|img)(?:@\w+bot)?\s*$/;
-    const isCommandOnly = commandOnlyRegex.test(text);
+    const isCommandOnly = ALL_COMMAND_REGEX.test(text);
     const hasMedia = msg.photo || msg.document || albumMessages.length > 0;
 
     if (isCommandOnly && !hasMedia) {
@@ -26,7 +28,7 @@ async function validatePrompt(msg: TelegramBot.Message, albumMessages: TelegramB
 
         const isOriginalFromBot = originalMsg.from.id === BOT_ID;
         const hasOriginalMedia = originalMsg.photo || originalMsg.document;
-        const isOriginalCommandOnly = commandOnlyRegex.test(originalMsg.text || originalMsg.caption || '');
+        const isOriginalCommandOnly = ALL_COMMAND_REGEX.test(originalMsg.text || originalMsg.caption || '');
 
         if (isOriginalFromBot || (isOriginalCommandOnly && !hasOriginalMedia)) {
             const sentMsg = await bot.sendMessage(msg.chat.id, "봇의 응답이나 다른 명령어에는 내용을 입력하여 답장해야 합니다.", { reply_to_message_id: msg.message_id });
@@ -40,8 +42,7 @@ async function validatePrompt(msg: TelegramBot.Message, albumMessages: TelegramB
 // 2. 프롬프트 소스 결정
 function determinePromptSource(msg: TelegramBot.Message, albumMessages: TelegramBot.Message[], BOT_ID: number): TelegramBot.Message {
     const text = msg.text || msg.caption || '';
-    const commandOnlyRegex = /^\/(gemini|image|img)(?:@\w+bot)?\s*$/;
-    const isCommandOnly = commandOnlyRegex.test(text);
+    const isCommandOnly = ALL_COMMAND_REGEX.test(text);
     const hasMedia = msg.photo || msg.document || albumMessages.length > 0;
 
     if (isCommandOnly && !hasMedia && msg.reply_to_message && msg.reply_to_message.from && msg.reply_to_message.from.id !== BOT_ID) {
@@ -62,9 +63,11 @@ async function determineCommandType(msg: TelegramBot.Message, BOT_ID: number): P
 
     const imageRegex = /^\/(image|img)(?:@\w+bot)?/;
     const chatRegex = /^\/(gemini)(?:@\w+bot)?/;
+    const summarizeRegex = /^\/(summarize|sum)(?:@\w+bot)?/;
 
     // 명시적 명령어
     if (imageRegex.test(text)) return 'image';
+    if (summarizeRegex.test(text)) return 'summarize';
     if (chatRegex.test(text) || text.startsWith('...')) return 'chat';
 
     // 암시적 대화 연속
@@ -110,7 +113,10 @@ export async function routeCommand(
         logMessage(msg, BOT_ID, commandType);
         bot.setMessageReaction(msg.chat.id, msg.message_id, { reaction: [{ type: 'emoji', emoji: '👍' }] });
 
-        const handler = commandType === 'image' ? handleImageCommand : handleChatCommand;
+        const handler = commandType === 'image' ? handleImageCommand :
+            commandType === 'summarize' ? handleSummarizeCommand :
+                handleChatCommand;
+
         // 암시적 대화 연속일 경우, 프롬프트 소스는 현재 메시지이며 앨범은 사용하지 않음
         const sourceMsgForHandler = isImplicitContinuation ? msg : promptSourceMsg;
         const albumForHandler = isImplicitContinuation ? [] : albumMessages;
