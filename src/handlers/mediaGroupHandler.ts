@@ -9,7 +9,8 @@ export async function processMessage(
     msg: TelegramBot.Message,
     bot: TelegramBot,
     BOT_ID: number,
-    config: Config
+    config: Config,
+    botUsername: string
 ) {
     if (msg.media_group_id) {
         if (!mediaGroupCache.has(msg.media_group_id)) {
@@ -32,11 +33,11 @@ export async function processMessage(
             const commandMsg = group.messages.find((m: TelegramBot.Message) => (m.caption || '').startsWith('/')) || group.messages[0];
             const otherMessages = group.messages.filter((m: TelegramBot.Message) => m.message_id !== commandMsg.message_id);
 
-            await routeCommand(commandMsg, otherMessages, bot, BOT_ID, config);
+            await routeCommand(commandMsg, otherMessages, bot, BOT_ID, config, botUsername);
             mediaGroupCache.delete(msg.media_group_id!);
         }, 1000); // 1초 동안 추가 메시지를 기다림
     } else {
         // 미디어 그룹이 아니면 즉시 처리
-        await routeCommand(msg, [], bot, BOT_ID, config);
+        await routeCommand(msg, [], bot, BOT_ID, config, botUsername);
     }
 }
