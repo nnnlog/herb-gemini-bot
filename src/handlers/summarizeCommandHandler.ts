@@ -6,7 +6,6 @@ import TelegramBot from "node-telegram-bot-api";
 import { Config } from '../config.js';
 import { GenerateContentParameters } from '@google/genai';
 import { handleCommandError, prepareContentForModel } from "../helpers/commandHelper.js";
-import { readFileSync } from 'fs';
 
 const summarizePrompt = `# 역할 (Role)
 당신은 모든 분야를 아우르는 **고밀도 정보 분석가**입니다. 당신의 임무는 사용자가 제공한 웹페이지(뉴스, 블로그, 보고서 등)의 내용을 분석하여, 바쁜 전문가들이 빠르게 전체 내용을 파악할 수 있는 **'GeekNews(Hada.io)' 스타일의 고밀도 정보 리포트**를 작성하는 것입니다.
@@ -15,6 +14,7 @@ const summarizePrompt = `# 역할 (Role)
 작성 전에 반드시 다음 절차를 따르십시오.
 
 1.  **정보 수집 (Information Gathering):**
+    *   **URL 유효성 검사:** 도구를 사용하기 전, 입력된 URL이 \`https://...\` 또는 \`http://...\`로 시작하는 올바른 형식인지 확인하십시오. \`httpshttps:/...\`와 같이 프로토콜이 중복된 경우, 올바른 URL로 반드시 수정해야 합니다.
     *   사용자가 제공한 URL의 실제 내용을 확인하기 위해 **반드시 검색/브라우징 도구를 호출**하십시오.
     *   본문을 대충 훑어보지 말고, 기사에 포함된 **육하원칙(5W1H), 구체적인 수치, 배경, 인과 관계, 인용문** 등을 꼼꼼히 파악하십시오.
 
