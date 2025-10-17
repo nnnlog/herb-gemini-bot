@@ -1,7 +1,7 @@
 import TelegramBot from 'node-telegram-bot-api';
 import { Config } from './config.js';
 
-export type CommandType = 'image' | 'chat' | 'summarize' | 'start';
+export type CommandType = 'image' | 'chat' | 'summarize' | 'start' | 'help';
 
 export type CommandHandler = (
     msg: TelegramBot.Message,

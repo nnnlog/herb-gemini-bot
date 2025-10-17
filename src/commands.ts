@@ -3,19 +3,27 @@ import { handleImageCommand } from './handlers/imageCommandHandler.js';
 import { handleChatCommand } from './handlers/chatCommandHandler.js';
 import { handleSummarizeCommand } from './handlers/summarizeCommandHandler.js';
 import { handleStartCommand } from './handlers/startCommandHandler.js';
+import { handleHelpCommand } from './handlers/helpCommandHandler.js';
 
 export const commands: Command[] = [
     {
         type: 'start',
         handler: handleStartCommand,
-        description: '봇을 시작하고 도움말을 표시합니다.',
+        description: '봇을 시작하고 간단한 도움말을 표시합니다.',
         aliases: ['start'],
         showInList: false
     },
     {
+        type: 'help',
+        handler: handleHelpCommand,
+        description: '자세한 도움말을 표시합니다.',
+        aliases: ['help'],
+        showInList: true
+    },
+    {
         type: 'image',
         handler: handleImageCommand,
-        description: '프롬프트를 기반으로 이미지를 생성합니다.',
+        description: 'Gemini 2.5 Flash Image 모델로 이미지를 생성합니다.',
         aliases: ['image', 'img'],
         showInList: true
     },
@@ -29,7 +37,7 @@ export const commands: Command[] = [
     {
         type: 'summarize',
         handler: handleSummarizeCommand,
-        description: '제공된 텍스트나 대화 내용을 요약합니다.',
+        description: '링크나 긴 텍스트(파일)를 요약합니다.',
         aliases: ['summarize'],
         showInList: true
     }

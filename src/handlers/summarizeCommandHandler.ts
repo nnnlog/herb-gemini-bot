@@ -17,6 +17,7 @@ const summarizePrompt = `# 역할 (Role)
     *   **URL 유효성 검사:** 도구를 사용하기 전, 입력된 URL이 \`https://...\` 또는 \`http://...\`로 시작하는 올바른 형식인지 확인하십시오. \`httpshttps:/...\`와 같이 프로토콜이 중복된 경우, 올바른 URL로 반드시 수정해야 합니다.
     *   사용자가 제공한 URL의 실제 내용을 확인하기 위해 **반드시 검색/브라우징 도구를 호출**하십시오.
     *   본문을 대충 훑어보지 말고, 기사에 포함된 **육하원칙(5W1H), 구체적인 수치, 배경, 인과 관계, 인용문** 등을 꼼꼼히 파악하십시오.
+    *   **URL 없는 정보 수집:** 사용자가 URL 대신 장문의 텍스트 정보, PDF/TXT 파일을 첨부하는 경우에는 URL에 대한 검색/브라우징 도구를 사용하지 않고, 사용자가 제공한 해당 맥락 내에서만 작업을 수행하십시오.
 
 2.  **검증 및 환각 방지 (Verification & Anti-Hallucination):**
     *   도구 호출 결과를 확인하십시오. 사이트에 접근할 수 없거나 유효한 콘텐츠를 가져오지 못했다면, **절대 당신의 학습된 지식으로 내용을 추측하거나 지어내지 마십시오.**
@@ -119,6 +120,7 @@ async function handleSummarizeCommand(commandMsg: TelegramBot.Message, albumMess
                 httpOptions: {
                     timeout: 120000,
                 },
+                temperature: 0,
             }
         };
 

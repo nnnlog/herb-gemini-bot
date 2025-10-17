@@ -53,7 +53,7 @@ async function handleChatCommand(commandMsg: TelegramBot.Message, albumMessages:
                     const output = part.codeExecutionResult.output;
                     const outcome = part.codeExecutionResult.outcome;
                     const outcomeIcon = outcome === 'OUTCOME_OK' ? '✅' : '❌';
-                    fullResponse += `\n<b>[실행 결과 ${outcomeIcon}]</b>\n<pre>${escapeHtml(output ?? '')}</pre>`;
+                    fullResponse += `\n<b>[실행 결과 ${outcomeIcon}]</b>\n<pre><code>${escapeHtml(output ?? '')}</code></pre>`;
                 }
             }
 
