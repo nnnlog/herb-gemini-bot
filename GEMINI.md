@@ -8,6 +8,7 @@
 
 -   **텍스트 생성:** 사용자가 입력한 프롬프트에 대해 Gemini AI가 생성한 텍스트 응답을 제공합니다. (`/gemini` 명령어)
 -   **이미지 생성:** 사용자가 입력한 프롬프트를 기반으로 이미지를 생성합니다. (`/image` 명령어)
+-   **내용 요약:** 사용자가 제공한 텍스트나 웹 페이지 링크를 'GeekNews' 스타일의 고밀도 리포트로 요약합니다. (`/summarize` 명령어)
 -   **대화형 응답:** 사용자가 봇의 메시지에 답장하면, 이전 대화의 맥락을 기억하여 자연스러운 대화를 이어갑니다.
 -   **미디어 처리:** 사용자가 전송한 사진이나 앨범(여러 사진)을 이해하고, 이를 기반으로 명령을 수행할 수 있습니다.
 -   **대화 기록:** 모든 상호작용은 SQLite 데이터베이스에 기록되어 대화의 연속성을 유지합니다.
@@ -19,7 +20,7 @@
 -   **런타임:** Node.js
 -   **텔레그램 봇 API:** `node-telegram-bot-api`
 -   **Google AI:** `@google/genai`
--   **데이터베이스:** `sqlite3`
+-   **데이터베이스:** `sqlite3`, `db-migrate`
 -   **테스트:** Jest
 -   **기타:** `dotenv` (환경 변수), `marked` (마크다운 파싱)
 
@@ -36,7 +37,8 @@
 │   │   ├── commandRouter.ts      # 사용자 의도 파악 및 명령어 라우팅
 │   │   ├── mediaGroupHandler.ts  # 앨범(미디어 그룹) 메시지 처리
 │   │   ├── chatCommandHandler.ts # /gemini (텍스트 생성) 명령어 처리
-│   │   └── imageCommandHandler.ts# /image (이미지 생성) 명령어 처리
+│   │   ├── imageCommandHandler.ts# /image (이미지 생성) 명령어 처리
+│   │   └── summarizeCommandHandler.ts# /summarize (내용 요약) 명령어 처리
 │   ├── services/             # 외부 서비스 연동 및 핵심 비즈니스 로직
 │   │   ├── aiHandler.ts        # Google Gemini API 연동 관리
 │   │   ├── auth.ts             # 사용자 권한 인증
@@ -78,9 +80,9 @@
 #### `commandRouter.ts`
 -   봇의 핵심 두뇌 역할을 하며, 사용자의 메시지를 분석하여 의도를 파악하고 적절한 핸들러로 분기합니다.
 -   **사용자 인증:** `auth.ts`를 통해 메시지를 보낸 사용자가 허가된 사용자인지 확인합니다.
--   **명령어 유형 결정:** 메시지 텍스트(` /image`, `/gemini`)나 대화의 맥락(봇의 메시지에 대한 답장)을 분석하여 `image` 또는 `chat` 명령으로 분류합니다.
+-   **명령어 유형 결정:** 메시지 텍스트(`/image`, `/gemini`, `/summarize`)나 대화의 맥락(봇의 메시지에 대한 답장)을 분석하여 `image`, `chat`, `summarize` 명령으로 분류합니다.
 -   **프롬프트 유효성 검사:** 명령어만 있고 내용이 없는 경우 등 잘못된 요청을 필터링합니다.
--   분석된 결과에 따라 `chatCommandHandler` 또는 `imageCommandHandler`를 호출합니다.
+-   분석된 결과에 따라 `chatCommandHandler`, `imageCommandHandler`, `summarizeCommandHandler`를 호출합니다.
 
 #### `chatCommandHandler.ts`
 -   `/gemini` 명령어 및 텍스트 기반 대화 생성을 처리합니다.
@@ -93,6 +95,12 @@
 -   `commandHelper`를 통해 프롬프트와 컨텍스트(첨부 이미지 등)를 준비합니다.
 -   `aiHandler`를 호출하여 이미지 생성 모델에 요청을 보냅니다.
 -   생성된 이미지를 버퍼 형태로 받아 텔레그램 `sendPhoto` 또는 `sendMediaGroup` API를 사용해 사용자에게 전송합니다. 텍스트 응답이 함께 생성된 경우 캡션으로 추가합니다.
+
+#### `summarizeCommandHandler.ts`
+-   `/summarize` 명령어를 처리하여 사용자가 제공한 콘텐츠(텍스트, 웹 링크 등)를 요약합니다.
+-   `prompt.txt` 파일에 정의된 '고밀도 정보 분석가' 역할을 시스템 프롬프트(`systemInstruction`)로 사용하여, 'GeekNews' 스타일의 요약문을 생성하도록 유도합니다.
+-   `chatCommandHandler`와 거의 동일한 구조를 가지며, API 요청 방식, 결과 처리, 오류 핸들링 등에서 일관성을 유지합니다.
+-   요약 기능의 특수성을 반영하기 위해 시스템 프롬프트를 별도로 주입하는 점이 주요 차이점입니다.
 
 ### 5.3. `src/services/` - 외부 연동 및 비즈니스 로직
 
@@ -119,8 +127,7 @@
 -   프로젝트 전반에서 사용되는 다양한 공통 함수를 제공합니다.
 -   **파일 처리:** `bot.getFileStream`으로 받은 파일 스트림을 `Buffer`로 변환하고, 메모리 캐시(`imageCache`)를 운영하여 동일 파일의 중복 다운로드를 방지합니다.
 -   **콘텐츠 빌더 (`buildContents`):** `db.ts`에서 가져온 대화 기록과 현재 메시지의 파일들을 취합하여 Gemini API가 요구하는 최종 `Content[]` 배열 형식으로 구성합니다.
--   **메시지 분할 (`sendLongMessage`):** 텔레그램의 메시지 최대 길이(4096자)를 초과하는 긴 응답을 코드 블록(`
-<pre>`) 등을 고려하여 여러 개의 메시지로 안전하게 분할하여 순차적으로 전송합니다.
+-   **메시지 분할 (`sendLongMessage`):** 텔레그램의 메시지 최대 길이(4096자)를 초과하는 긴 응답을 코드 블록(`\n<pre>`) 등을 고려하여 여러 개의 메시지로 안전하게 분할하여 순차적으로 전송합니다.
 
 #### `commandHelper.ts`
 -   명령어 핸들러들의 공통 준비 작업을 돕는 함수를 제공합니다.

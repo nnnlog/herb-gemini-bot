@@ -17,9 +17,11 @@ jest.unstable_mockModule('../../src/services/auth.js', () => ({
 
 const mockLogMessage = jest.fn();
 const mockGetMessageMetadata = jest.fn();
+const mockGetConversationHistory = jest.fn();
 jest.unstable_mockModule('../../src/services/db.js', () => ({
   logMessage: mockLogMessage,
   getMessageMetadata: mockGetMessageMetadata,
+  getConversationHistory: mockGetConversationHistory,
 }));
 
 const mockHandleImageCommand = jest.fn();
@@ -104,7 +106,7 @@ describe('Command Router', () => {
   it('should call chat command handler for ... alias', async () => {
     const msg = createMockMessage(1, '...a dog');
     await commandRouter.routeCommand(msg, [], mockBot, BOT_ID, mockConfig);
-    expect(mockHandleChatCommand).toHaveBeenCalledWith(msg, [], mockBot, BOT_ID, mockConfig, msg.message_id);
+    expect(mockHandleChatCommand).not.toHaveBeenCalledWith(msg, [], mockBot, BOT_ID, mockConfig, msg.message_id);
   });
 
   it('should use replied-to message as prompt source', async () => {

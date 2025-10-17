@@ -20,22 +20,25 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@google/genai": "^1.19.0",
-    "dotenv": "^17.2.2",
-    "marked": "^16.2.1",
+    "@google/genai": "^1.25.0",
+    "dotenv": "^17.2.3",
+    "marked": "^16.4.0",
     "node-telegram-bot-api": "^0.66.0",
     "sqlite3": "^5.1.7"
   },
   "devDependencies": {
     "@types/jest": "^30.0.0",
+    "@jest/globals": "^30.2.0",
     "@types/marked": "^6.0.0",
-    "@types/node": "^20.12.12",
+    "@types/node": "^24.8.0",
     "@types/node-telegram-bot-api": "^0.64.11",
     "concurrently": "^9.2.1",
-    "jest": "^30.1.3",
-    "ts-jest": "^29.4.1",
-    "typescript": "^5.9.2",
-    "cross-env": "^10.0.0"
+    "cross-env": "^10.1.0",
+    "db-migrate": "^0.11.14",
+    "db-migrate-sqlite3": "^1.0.2",
+    "jest": "^30.2.0",
+    "ts-jest": "^29.4.5",
+    "typescript": "^5.9.3"
   },
   "pnpm": {
     "onlyBuiltDependencies": [

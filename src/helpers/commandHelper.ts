@@ -14,7 +14,7 @@ export async function prepareContentForModel(
     bot: TelegramBot,
     commandMsg: TelegramBot.Message,
     albumMessages: TelegramBot.Message[],
-    commandType: 'image' | 'gemini'
+    commandType: 'image' | 'gemini' | 'summarize'
 ): Promise<ContentPreparationResult> {
     const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100 MiB
     const conversationHistory = await getConversationHistory(commandMsg.chat.id, commandMsg);

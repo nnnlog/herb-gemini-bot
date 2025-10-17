@@ -4,13 +4,14 @@ import { getMessageMetadata, logMessage } from '../services/db.js';
 import { handleImageCommand } from './imageCommandHandler.js';
 import { handleChatCommand } from './chatCommandHandler.js';
 import { isUserAuthorized } from '../services/auth.js';
+import { handleSummarizeCommand } from './summarizeCommandHandler.js';
 
-type CommandType = 'image' | 'chat';
+type CommandType = 'image' | 'chat' | 'summarize';
 
 // 1. 프롬프트 유효성 검사
 async function validatePrompt(msg: TelegramBot.Message, albumMessages: TelegramBot.Message[], bot: TelegramBot, BOT_ID: number): Promise<boolean> {
     const text = msg.text || msg.caption || '';
-    const commandOnlyRegex = /^\/(gemini|image|img)(?:@\w+bot)?\s*$/;
+    const commandOnlyRegex = /^\/(gemini|image|img|summarize)(?:@\w+bot)?\s*$/;
     const isCommandOnly = commandOnlyRegex.test(text);
     const hasMedia = msg.photo || msg.document || albumMessages.length > 0;
 
@@ -40,7 +41,7 @@ async function validatePrompt(msg: TelegramBot.Message, albumMessages: TelegramB
 // 2. 프롬프트 소스 결정
 function determinePromptSource(msg: TelegramBot.Message, albumMessages: TelegramBot.Message[], BOT_ID: number): TelegramBot.Message {
     const text = msg.text || msg.caption || '';
-    const commandOnlyRegex = /^\/(gemini|image|img)(?:@\w+bot)?\s*$/;
+    const commandOnlyRegex = /^\/(gemini|image|img|summarize)(?:@\w+bot)?\s*$/;
     const isCommandOnly = commandOnlyRegex.test(text);
     const hasMedia = msg.photo || msg.document || albumMessages.length > 0;
 
@@ -62,16 +63,18 @@ async function determineCommandType(msg: TelegramBot.Message, BOT_ID: number): P
 
     const imageRegex = /^\/(image|img)(?:@\w+bot)?/;
     const chatRegex = /^\/(gemini)(?:@\w+bot)?/;
+    const summarizeRegex = /^\/(summarize)(?:@\w+bot)?/;
 
     // 명시적 명령어
     if (imageRegex.test(text)) return 'image';
     if (chatRegex.test(text)) return 'chat';
+    if (summarizeRegex.test(text)) return 'summarize';
 
     // 암시적 대화 연속
     if (msg.reply_to_message?.from?.id === BOT_ID) {
         const originalMsgMeta = await getMessageMetadata(msg.chat.id, msg.reply_to_message.message_id);
-        if (originalMsgMeta?.command_type === 'chat') {
-            console.log(`'chat' 대화의 연속으로 판단하여 응답합니다.`);
+        if (originalMsgMeta?.command_type === 'chat' || originalMsgMeta?.command_type === 'summarize') {
+            console.log(`'chat' 또는 'summarize' 대화의 연속으로 판단하여 'chat'으로 응답합니다.`);
             return 'chat';
         } else if (originalMsgMeta?.command_type === 'image') {
             console.log(`'image' 대화의 연속으로 판단하여 응답합니다.`);
@@ -110,7 +113,9 @@ export async function routeCommand(
         logMessage(msg, BOT_ID, commandType);
         bot.setMessageReaction(msg.chat.id, msg.message_id, { reaction: [{ type: 'emoji', emoji: '👍' }] });
 
-        const handler = commandType === 'image' ? handleImageCommand : handleChatCommand;
+        const handler = commandType === 'image' ? handleImageCommand :
+                        commandType === 'summarize' ? handleSummarizeCommand : handleChatCommand;
+
         // 암시적 대화 연속일 경우, 프롬프트 소스는 현재 메시지이며 앨범은 사용하지 않음
         const sourceMsgForHandler = isImplicitContinuation ? msg : promptSourceMsg;
         const albumForHandler = isImplicitContinuation ? [] : albumMessages;
