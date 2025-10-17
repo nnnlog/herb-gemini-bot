@@ -108,8 +108,9 @@ export async function routeCommand(
         return;
     }
 
-    if (command.type === 'start') {
-        logMessage(msg, BOT_ID, command.type);
+    logMessage(msg, BOT_ID, command.type);
+
+    if (command.ignoreArgs) {
         await command.handler(msg, [], bot, BOT_ID, config, msg.message_id);
         return;
     }
@@ -121,7 +122,6 @@ export async function routeCommand(
     const promptSourceMsg = determinePromptSource(msg, albumMessages, BOT_ID);
     const isImplicitContinuation = msg.reply_to_message?.from?.id === BOT_ID && !(msg.text || msg.caption || '').startsWith('/');
 
-    logMessage(msg, BOT_ID, command.type);
     bot.setMessageReaction(msg.chat.id, msg.message_id, { reaction: [{ type: 'emoji', emoji: '👍' }] });
 
     const sourceMsgForHandler = isImplicitContinuation ? msg : promptSourceMsg;

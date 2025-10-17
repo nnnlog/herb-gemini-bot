@@ -11,14 +11,16 @@ export const commands: Command[] = [
         handler: handleStartCommand,
         description: '봇을 시작하고 간단한 도움말을 표시합니다.',
         aliases: ['start'],
-        showInList: false
+        showInList: false,
+        ignoreArgs: true
     },
     {
         type: 'help',
         handler: handleHelpCommand,
         description: '자세한 도움말을 표시합니다.',
         aliases: ['help'],
-        showInList: true
+        showInList: true,
+        ignoreArgs: true
     },
     {
         type: 'image',

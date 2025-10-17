@@ -17,5 +17,6 @@ export interface Command {
     handler: CommandHandler;
     description: string;
     aliases: string[];
-    showInList?: boolean; // Add this line
+    showInList?: boolean;
+    ignoreArgs?: boolean;
 }

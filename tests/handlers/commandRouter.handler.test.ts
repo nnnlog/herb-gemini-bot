@@ -34,6 +34,21 @@ jest.unstable_mockModule('../../src/handlers/chatCommandHandler.js', () => ({
   handleChatCommand: mockHandleChatCommand,
 }));
 
+const mockHandleStartCommand = jest.fn();
+jest.unstable_mockModule('../../src/handlers/startCommandHandler.js', () => ({
+    handleStartCommand: mockHandleStartCommand,
+}));
+
+const mockHandleHelpCommand = jest.fn();
+jest.unstable_mockModule('../../src/handlers/helpCommandHandler.js', () => ({
+    handleHelpCommand: mockHandleHelpCommand,
+}));
+
+const mockHandleSummarizeCommand = jest.fn();
+jest.unstable_mockModule('../../src/handlers/summarizeCommandHandler.js', () => ({
+    handleSummarizeCommand: mockHandleSummarizeCommand,
+}));
+
 
 // --- Test Suite ---
 describe('Command Router', () => {
@@ -149,5 +164,17 @@ describe('Command Router', () => {
     const commandMsg = createMockMessage(2, '/gemini', forwardedMsg);
     await commandRouter.routeCommand(commandMsg, [], mockBot, BOT_ID, mockConfig, BOT_USERNAME);
     expect(mockHandleChatCommand).toHaveBeenCalledWith(forwardedMsg, [], mockBot, BOT_ID, mockConfig, commandMsg.message_id);
+  });
+
+  it('should call start command handler for /start command', async () => {
+    const msg = createMockMessage(1, '/start');
+    await commandRouter.routeCommand(msg, [], mockBot, BOT_ID, mockConfig, BOT_USERNAME);
+    expect(mockHandleStartCommand).toHaveBeenCalledWith(msg, [], mockBot, BOT_ID, mockConfig, msg.message_id);
+  });
+
+  it('should call help command handler for /help command even with args', async () => {
+    const msg = createMockMessage(1, '/help some random arguments');
+    await commandRouter.routeCommand(msg, [], mockBot, BOT_ID, mockConfig, BOT_USERNAME);
+    expect(mockHandleHelpCommand).toHaveBeenCalledWith(msg, [], mockBot, BOT_ID, mockConfig, msg.message_id);
   });
 });
