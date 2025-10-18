@@ -1,8 +1,8 @@
 import TelegramBot from 'node-telegram-bot-api';
-import { config } from './config.js';
-import { initDb } from './services/db.js';
-import { processMessage } from './handlers/mediaGroupHandler.js';
-import { commands } from './commands.js';
+import {config} from './config.js';
+import {initDb} from './services/db.js';
+import {processMessage} from './handlers/mediaGroupHandler.js';
+import {commands} from './commands.js';
 
 initDb();
 
@@ -13,9 +13,9 @@ if (!config.telegramToken) {
     process.exit(1);
 }
 
-const bot = new TelegramBot(config.telegramToken, { polling: true });
+const bot = new TelegramBot(config.telegramToken, {polling: true});
 
-bot.getMe().then(me => {
+bot.getMe().then(async (me) => {
     if (!me.id || !me.username) {
         console.error("봇 ID 또는 사용자명을 가져올 수 없습니다.");
         process.exit(1);
@@ -42,11 +42,13 @@ bot.getMe().then(me => {
             return [mainCommandEntry, ...aliasEntries];
         });
 
-    bot.setMyCommands(botCommands).then(() => {
-        console.log("텔레그램에 다음 명령어를 등록했습니다:", botCommands);
-    }).catch(err => {
-        console.error("명령어 등록 실패:", err);
-    });
+    for (const type of ["all_private_chats", "all_chat_administrators", "all_group_chats"] as const) {
+        bot.setMyCommands(botCommands, {
+            scope: {
+                type,
+            },
+        });
+    }
 
     bot.on('message', async (msg: TelegramBot.Message) => {
         // 모든 메시지를 mediaGroupHandler로 전달하여 처리
