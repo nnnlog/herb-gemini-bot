@@ -2,10 +2,10 @@ import {generateFromHistory, GenerationOutput} from '../services/aiHandler.js';
 import {logMessage} from '../services/db.js';
 import {sendLongMessage} from '../helpers/utils.js';
 import {marked} from 'marked';
-import TelegramBot, { InputMediaPhoto } from "node-telegram-bot-api";
-import { Config } from '../config.js';
-import { GenerateContentParameters } from '@google/genai';
-import { handleCommandError, prepareContentForModel } from "../helpers/commandHelper.js";
+import TelegramBot, {InputMediaPhoto} from "node-telegram-bot-api";
+import {Config} from '../config.js';
+import {GenerateContentParameters} from '@google/genai';
+import {handleCommandError, prepareContentForModel} from "../helpers/commandHelper.js";
 
 async function handleImageCommand(commandMsg: TelegramBot.Message, albumMessages: TelegramBot.Message[] = [], bot: TelegramBot, BOT_ID: number, config: Config, replyToId: number) {
     const chatId = commandMsg.chat.id;
@@ -48,7 +48,7 @@ async function handleImageCommand(commandMsg: TelegramBot.Message, albumMessages
                     return item;
                 });
                 const sentMessages = await bot.sendMediaGroup(chatId, media, {reply_to_message_id: replyToId});
-                for(const sentMsg of sentMessages) {
+                for (const sentMsg of sentMessages) {
                     logMessage(sentMsg, BOT_ID, 'image');
                 }
             } else {

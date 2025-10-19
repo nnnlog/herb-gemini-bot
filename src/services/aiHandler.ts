@@ -1,4 +1,4 @@
-import { GoogleGenAI, Part, GroundingMetadata, GenerateContentParameters, Candidate } from '@google/genai';
+import {GoogleGenAI, Part, GroundingMetadata, GenerateContentParameters, Candidate} from '@google/genai';
 
 const MAX_RETRIES = 3;
 const delay = (ms: number): Promise<void> => new Promise(resolve => setTimeout(resolve, ms));
@@ -13,7 +13,7 @@ export interface GenerationOutput {
 }
 
 export async function generateFromHistory(request: GenerateContentParameters, googleApiKey: string): Promise<GenerationOutput> {
-    const genAI = new GoogleGenAI({ apiKey: googleApiKey });
+    const genAI = new GoogleGenAI({apiKey: googleApiKey});
 
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
         try {
@@ -24,7 +24,7 @@ export async function generateFromHistory(request: GenerateContentParameters, go
             // 1. 프롬프트 자체가 안전 필터에 의해 차단되었는지 먼저 확인
             if (result.promptFeedback?.blockReason) {
                 console.warn(`API 프롬프트 차단됨: ${result.promptFeedback.blockReason}`);
-                return { error: '요청하신 내용은 안전 정책에 따라 처리할 수 없습니다.' };
+                return {error: '요청하신 내용은 안전 정책에 따라 처리할 수 없습니다.'};
             }
 
             const firstCandidate = result.candidates?.[0];
@@ -35,7 +35,10 @@ export async function generateFromHistory(request: GenerateContentParameters, go
             }
 
             // 3. 이미지 데이터 추출 (모든 후보에서)
-            const outputImages = result.candidates?.reduce((acc: { buffer: Buffer; mimeType: string | undefined; }[], candidate: Candidate) => {
+            const outputImages = result.candidates?.reduce((acc: {
+                buffer: Buffer;
+                mimeType: string | undefined;
+            }[], candidate: Candidate) => {
                 const imageParts = candidate.content?.parts?.filter((part: Part) => part.inlineData?.mimeType?.startsWith('image/'));
                 if (imageParts) {
                     for (const part of imageParts) {
@@ -73,8 +76,8 @@ export async function generateFromHistory(request: GenerateContentParameters, go
 
             // 5. JS 버전과 동일하게, 유효한 콘텐츠가 있는지 확인
             if (Object.keys(finalResponse).length === 0) {
-                 console.error("API 응답에 이미지 또는 텍스트 데이터가 없습니다.", JSON.stringify(result, null, 2));
-                 return {error: 'API가 인식할 수 없는 응답을 반환했습니다.'};
+                console.error("API 응답에 이미지 또는 텍스트 데이터가 없습니다.", JSON.stringify(result, null, 2));
+                return {error: 'API가 인식할 수 없는 응답을 반환했습니다.'};
             }
 
             return finalResponse;
@@ -109,5 +112,5 @@ export async function generateFromHistory(request: GenerateContentParameters, go
         }
     }
     // 모든 재시도 실패 시
-    return { error: 'API 요청에 실패했습니다. (최대 재시도 횟수 초과)' };
+    return {error: 'API 요청에 실패했습니다. (최대 재시도 횟수 초과)'};
 }

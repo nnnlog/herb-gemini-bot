@@ -3,9 +3,9 @@ import {logMessage} from '../services/db.js';
 import {sendLongMessage} from '../helpers/utils.js';
 import {marked} from 'marked';
 import TelegramBot from "node-telegram-bot-api";
-import { Config } from '../config.js';
-import { GenerateContentParameters } from '@google/genai';
-import { handleCommandError, prepareContentForModel } from "../helpers/commandHelper.js";
+import {Config} from '../config.js';
+import {GenerateContentParameters} from '@google/genai';
+import {handleCommandError, prepareContentForModel} from "../helpers/commandHelper.js";
 
 async function handleChatCommand(commandMsg: TelegramBot.Message, albumMessages: TelegramBot.Message[] = [], bot: TelegramBot, BOT_ID: number, config: Config, replyToId: number) {
     const chatId = commandMsg.chat.id;
@@ -59,11 +59,11 @@ async function handleChatCommand(commandMsg: TelegramBot.Message, albumMessages:
 
             // Grounding Metadata 처리
             if (result.groundingMetadata) {
-                const { webSearchQueries, groundingChunks } = result.groundingMetadata;
+                const {webSearchQueries, groundingChunks} = result.groundingMetadata;
                 let metadataText = '\n';
 
                 if (webSearchQueries && webSearchQueries.length > 0) {
-                    metadataText += `\n---\n🔍 **검색어**: ${webSearchQueries.map(q => `'${q}'`).join(', ' )}\n`;
+                    metadataText += `\n---\n🔍 **검색어**: ${webSearchQueries.map(q => `'${q}'`).join(', ')}\n`;
                 }
 
                 if (groundingChunks && groundingChunks.length > 0) {

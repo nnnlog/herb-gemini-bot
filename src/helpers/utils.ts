@@ -1,7 +1,7 @@
 import TelegramBot from "node-telegram-bot-api";
-import { Readable } from "stream";
-import { ConversationTurn } from "../services/db.js";
-import { Content, Part } from "@google/genai";
+import {Readable} from "stream";
+import {ConversationTurn} from "../services/db.js";
+import {Content, Part} from "@google/genai";
 
 // --- 타입 정의 ---
 // Telegram에서 받은 파일 정보를 Attachment 타입으로 정규화하기 위한 인터페이스
@@ -51,7 +51,7 @@ async function createFileParts(bot: TelegramBot, files: TelegramFile[]): Promise
     return Promise.all(files.map(async (file) => {
         const buffer = await getFileBuffer(bot, file.file_id);
         const mimeType = getMimeType(file.file_name);
-        return { inlineData: { data: buffer.toString('base64'), mimeType } };
+        return {inlineData: {data: buffer.toString('base64'), mimeType}};
     }));
 }
 
@@ -83,9 +83,9 @@ export async function buildContents(bot: TelegramBot, conversationHistory: Conve
             const commandRegex = new RegExp(`^/${commandName}(?:@\\w+bot)?\\s*`);
             const cleanText = turn.text.replace(commandRegex, '').trim();
             if (cleanText) {
-                parts.push({ text: cleanText });
+                parts.push({text: cleanText});
             }
-            return { role: turn.role, parts };
+            return {role: turn.role, parts};
         })
     );
 
@@ -94,7 +94,10 @@ export async function buildContents(bot: TelegramBot, conversationHistory: Conve
         const historyFileIds = new Set(conversationHistory.flatMap(turn => turn.files.map(f => f.file_id)));
 
         const currentFiles: TelegramFile[] = allMessages
-            .flatMap(m => (m.photo ? [{...m.photo[m.photo.length - 1], file_name: 'image.jpg'}] : (m.document ? [m.document] : [])))
+            .flatMap(m => (m.photo ? [{
+                ...m.photo[m.photo.length - 1],
+                file_name: 'image.jpg'
+            }] : (m.document ? [m.document] : [])))
             .filter((f): f is TelegramFile => !!(f && f.file_id && !historyFileIds.has(f.file_id)));
 
         if (currentFiles.length > 0) {
@@ -104,13 +107,13 @@ export async function buildContents(bot: TelegramBot, conversationHistory: Conve
             lastContent?.parts?.unshift(...fileParts);
         }
     }
-    return { contents, totalSize };
+    return {contents, totalSize};
 }
 
 export async function sendLongMessage(bot: TelegramBot, chatId: number, text: string, replyToId?: number): Promise<TelegramBot.Message> {
     const MAX_LENGTH = 4096;
     if (text.length <= MAX_LENGTH) {
-        return bot.sendMessage(chatId, text, { reply_to_message_id: replyToId, parse_mode: 'HTML' });
+        return bot.sendMessage(chatId, text, {reply_to_message_id: replyToId, parse_mode: 'HTML'});
     }
 
     const chunks: string[] = [];

@@ -1,6 +1,6 @@
 import TelegramBot from 'node-telegram-bot-api';
-import { logMessage } from '../services/db.js';
-import { commands } from '../commands.js';
+import {logMessage} from '../services/db.js';
+import {commands} from '../commands.js';
 
 export async function handleStartCommand(
     msg: TelegramBot.Message,
@@ -26,6 +26,6 @@ ${commandList}
 - 앨범(여러 사진)을 첨부하여 명령을 내릴 수 있습니다.
 `;
 
-    const sentMsg = await bot.sendMessage(msg.chat.id, helpText, { parse_mode: 'Markdown' });
+    const sentMsg = await bot.sendMessage(msg.chat.id, helpText, {parse_mode: 'Markdown'});
     logMessage(sentMsg, BOT_ID, 'start');
 }

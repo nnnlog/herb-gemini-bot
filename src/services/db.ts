@@ -118,7 +118,9 @@ export async function logMessage(msg: TelegramBot.Message, botId: number, comman
 
 // 특정 메시지 정보 가져오기 (JSON 파싱 포함)
 export async function getMessage(chatId: number, messageId: number): Promise<TelegramBot.Message | null> {
-    const row = await dbGet<{ data: string }>(`SELECT data FROM raw_messages WHERE chat_id = ? AND message_id = ?`, [chatId, messageId]);
+    const row = await dbGet<{
+        data: string
+    }>(`SELECT data FROM raw_messages WHERE chat_id = ? AND message_id = ?`, [chatId, messageId]);
     return row ? JSON.parse(row.data) : null;
 }
 
@@ -131,7 +133,7 @@ export async function getMessageMetadata(chatId: number, messageId: number): Pro
 export function getAlbumMessages(chatId: number, mediaGroupId: string): Promise<TelegramBot.Message[]> {
     return new Promise((resolve, reject) => {
         const sql = `SELECT data FROM raw_messages WHERE chat_id = ? AND json_extract(data, '$.media_group_id') = ? ORDER BY message_id ASC`;
-        db.all(sql, [chatId, mediaGroupId], (err, rows: {data: string}[]) => {
+        db.all(sql, [chatId, mediaGroupId], (err, rows: { data: string }[]) => {
             if (err) reject(err);
             else resolve(rows.map(r => JSON.parse(r.data)));
         });

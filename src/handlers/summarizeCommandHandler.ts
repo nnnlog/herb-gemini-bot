@@ -3,9 +3,9 @@ import {logMessage} from '../services/db.js';
 import {sendLongMessage} from '../helpers/utils.js';
 import {marked} from 'marked';
 import TelegramBot from "node-telegram-bot-api";
-import { Config } from '../config.js';
-import { GenerateContentParameters } from '@google/genai';
-import { handleCommandError, prepareContentForModel } from "../helpers/commandHelper.js";
+import {Config} from '../config.js';
+import {GenerateContentParameters} from '@google/genai';
+import {handleCommandError, prepareContentForModel} from "../helpers/commandHelper.js";
 
 const summarizePrompt = `# 역할 (Role)
 당신은 모든 분야를 아우르는 **고밀도 정보 분석가**입니다. 당신의 임무는 사용자가 제공한 웹페이지(뉴스, 블로그, 보고서 등)의 내용을 분석하여, 바쁜 전문가들이 빠르게 전체 내용을 파악할 수 있는 **'GeekNews(Hada.io)' 스타일의 고밀도 정보 리포트**를 작성하는 것입니다.
@@ -146,11 +146,11 @@ async function handleSummarizeCommand(commandMsg: TelegramBot.Message, albumMess
             }
 
             if (result.groundingMetadata) {
-                const { webSearchQueries, groundingChunks } = result.groundingMetadata;
+                const {webSearchQueries, groundingChunks} = result.groundingMetadata;
                 let metadataText = '\n';
 
                 if (webSearchQueries && webSearchQueries.length > 0) {
-                    metadataText += `\n---\n🔍 **검색어**: ${webSearchQueries.map(q => `'${q}'`).join(', ' )}\n`;
+                    metadataText += `\n---\n🔍 **검색어**: ${webSearchQueries.map(q => `'${q}'`).join(', ')}\n`;
                 }
 
                 if (groundingChunks && groundingChunks.length > 0) {

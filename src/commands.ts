@@ -1,9 +1,9 @@
-import { Command } from './types.js';
-import { handleImageCommand } from './handlers/imageCommandHandler.js';
-import { handleChatCommand } from './handlers/chatCommandHandler.js';
-import { handleSummarizeCommand } from './handlers/summarizeCommandHandler.js';
-import { handleStartCommand } from './handlers/startCommandHandler.js';
-import { handleHelpCommand } from './handlers/helpCommandHandler.js';
+import {Command} from './types.js';
+import {handleImageCommand} from './handlers/imageCommandHandler.js';
+import {handleChatCommand} from './handlers/chatCommandHandler.js';
+import {handleSummarizeCommand} from './handlers/summarizeCommandHandler.js';
+import {handleStartCommand} from './handlers/startCommandHandler.js';
+import {handleHelpCommand} from './handlers/helpCommandHandler.js';
 
 export const commands: Command[] = [
     {

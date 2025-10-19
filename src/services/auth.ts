@@ -1,4 +1,4 @@
-import { config } from '../config.js';
+import {config} from '../config.js';
 
 export function isUserAuthorized(chatId: number, userId: number): boolean {
     const strChatId = String(chatId);

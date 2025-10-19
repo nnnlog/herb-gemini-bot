@@ -1,7 +1,7 @@
 import TelegramBot from 'node-telegram-bot-api';
-import { Config } from '../config.js';
-import { logMessage } from '../services/db.js';
-import { routeCommand } from './commandRouter.js';
+import {Config} from '../config.js';
+import {logMessage} from '../services/db.js';
+import {routeCommand} from './commandRouter.js';
 
 const mediaGroupCache = new Map<string, { messages: TelegramBot.Message[], timer: NodeJS.Timeout | null }>();
 
@@ -14,7 +14,7 @@ export async function processMessage(
 ) {
     if (msg.media_group_id) {
         if (!mediaGroupCache.has(msg.media_group_id)) {
-            mediaGroupCache.set(msg.media_group_id, { messages: [], timer: null });
+            mediaGroupCache.set(msg.media_group_id, {messages: [], timer: null});
         }
         const group = mediaGroupCache.get(msg.media_group_id)!;
         group.messages.push(msg);
