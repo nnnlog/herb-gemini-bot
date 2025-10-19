@@ -17,11 +17,9 @@ jest.unstable_mockModule('../../src/services/auth.js', () => ({
 
 const mockLogMessage = jest.fn();
 const mockGetMessageMetadata = jest.fn();
-const mockGetConversationHistory = jest.fn();
 jest.unstable_mockModule('../../src/services/db.js', () => ({
     logMessage: mockLogMessage,
     getMessageMetadata: mockGetMessageMetadata,
-    getConversationHistory: mockGetConversationHistory,
 }));
 
 const mockHandleImageCommand = jest.fn();
@@ -32,6 +30,11 @@ jest.unstable_mockModule('../../src/handlers/imageCommandHandler.js', () => ({
 const mockHandleChatCommand = jest.fn();
 jest.unstable_mockModule('../../src/handlers/chatCommandHandler.js', () => ({
     handleChatCommand: mockHandleChatCommand,
+}));
+
+const mockHandleMapCommand = jest.fn();
+jest.unstable_mockModule('../../src/handlers/mapCommandHandler.js', () => ({
+    handleMapCommand: mockHandleMapCommand,
 }));
 
 const mockHandleStartCommand = jest.fn();
@@ -154,7 +157,7 @@ describe('Command Router', () => {
         expect(mockHandleChatCommand).not.toHaveBeenCalled();
     });
 
-    it('should continue conversation by calling the correct handler', async () => {
+    it('should continue chat conversation by calling the chat handler', async () => {
         const botMsg = {
             ...createMockMessage(1, 'This is a chat response'),
             from: {id: BOT_ID, is_bot: true, first_name: 'Bot'}
@@ -163,6 +166,23 @@ describe('Command Router', () => {
         mockGetMessageMetadata.mockResolvedValue({command_type: 'chat'} as any);
         await commandRouter.routeCommand(userReply, [], mockBot, BOT_ID, mockConfig, BOT_USERNAME);
         expect(mockHandleChatCommand).toHaveBeenCalledWith(userReply, [], mockBot, BOT_ID, mockConfig, userReply.message_id);
+    });
+
+    it('should call map command handler for /map command', async () => {
+        const msg = createMockMessage(1, '/map show me restaurants near me');
+        await commandRouter.routeCommand(msg, [], mockBot, BOT_ID, mockConfig, BOT_USERNAME);
+        expect(mockHandleMapCommand).toHaveBeenCalledWith(msg, [], mockBot, BOT_ID, mockConfig, msg.message_id);
+    });
+
+    it('should continue map conversation by calling the map handler', async () => {
+        const botMsg = {
+            ...createMockMessage(1, 'Here are some restaurants.'),
+            from: {id: BOT_ID, is_bot: true, first_name: 'Bot'}
+        };
+        const userReply = createMockMessage(2, 'How about cafes?', botMsg);
+        mockGetMessageMetadata.mockResolvedValue({command_type: 'map'} as any);
+        await commandRouter.routeCommand(userReply, [], mockBot, BOT_ID, mockConfig, BOT_USERNAME);
+        expect(mockHandleMapCommand).toHaveBeenCalledWith(userReply, [], mockBot, BOT_ID, mockConfig, userReply.message_id);
     });
 
     it('should use forwarded message as prompt source when replying with command only', async () => {

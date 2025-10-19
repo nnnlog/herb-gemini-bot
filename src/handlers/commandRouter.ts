@@ -84,7 +84,7 @@ async function determineCommand(msg: TelegramBot.Message, BOT_ID: number, botUse
         if (originalMsgMeta?.command_type) {
             const type = originalMsgMeta.command_type;
             console.log(`'${type}' 대화의 연속으로 판단하여 응답합니다.`);
-            const conversationCommand = (type === 'chat' || type === 'summarize') ? 'gemini' : type === 'image' ? 'image' : null;
+            const conversationCommand = (type === 'chat' || type === 'summarize') ? 'gemini' : (type === 'image' || type === 'map') ? type : null;
             return conversationCommand ? commandMap.get(conversationCommand) || null : null;
         }
     }

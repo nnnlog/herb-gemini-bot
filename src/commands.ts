@@ -4,6 +4,7 @@ import {handleChatCommand} from './handlers/chatCommandHandler.js';
 import {handleSummarizeCommand} from './handlers/summarizeCommandHandler.js';
 import {handleStartCommand} from './handlers/startCommandHandler.js';
 import {handleHelpCommand} from './handlers/helpCommandHandler.js';
+import {handleMapCommand} from "./handlers/mapCommandHandler.js";
 
 export const commands: Command[] = [
     {
@@ -34,6 +35,13 @@ export const commands: Command[] = [
         handler: handleChatCommand,
         description: 'Gemini 2.5 Pro 모델과 대화합니다.',
         aliases: ['gemini', 'g'],
+        showInList: true
+    },
+    {
+        type: 'map',
+        handler: handleMapCommand,
+        description: 'Google 지도 기능이 활성화된 상태로 Gemini 2.5 Pro 모델과 대화합니다.',
+        aliases: ['map'],
         showInList: true
     },
     {
