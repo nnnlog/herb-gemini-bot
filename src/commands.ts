@@ -33,14 +33,14 @@ export const commands: Command[] = [
     {
         type: 'chat',
         handler: handleChatCommand,
-        description: 'Gemini 2.5 Pro 모델과 대화합니다.',
+        description: 'Gemini 3.0 Pro 모델과 대화합니다.',
         aliases: ['gemini', 'g'],
         showInList: true
     },
     {
         type: 'map',
         handler: handleMapCommand,
-        description: 'Google 지도 기능이 활성화된 상태로 Gemini 2.5 Pro 모델과 대화합니다.',
+        description: 'Google 지도 기능이 활성화된 상태로 Gemini 3.0 Pro 모델과 대화합니다.',
         aliases: ['map'],
         showInList: true
     },
