@@ -26,7 +26,7 @@ export const commands: Command[] = [
     {
         type: 'image',
         handler: handleImageCommand,
-        description: 'Gemini 2.5 Flash Image 모델로 이미지를 생성합니다.',
+        description: 'Gemini 3.0 Pro Image 모델로 이미지를 생성합니다.',
         aliases: ['image', 'img'],
         showInList: true
     },
