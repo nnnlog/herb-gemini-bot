@@ -118,7 +118,7 @@ async function handleSummarizeCommand(commandMsg: TelegramBot.Message, albumMess
                     thinkingBudget: 32768,
                 },
                 httpOptions: {
-                    timeout: 120000,
+                    timeout: 1000 * 60 * 10,
                 },
                 temperature: 0,
             }

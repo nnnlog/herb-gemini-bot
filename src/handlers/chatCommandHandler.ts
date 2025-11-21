@@ -31,7 +31,7 @@ async function handleChatCommand(commandMsg: TelegramBot.Message, albumMessages:
                     thinkingBudget: 32768,
                 },
                 httpOptions: {
-                    timeout: 120000,
+                    timeout: 1000 * 60 * 10,
                 },
             }
         };
