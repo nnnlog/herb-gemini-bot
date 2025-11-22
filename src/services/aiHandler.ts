@@ -1,4 +1,4 @@
-import {GoogleGenAI, Part, GroundingMetadata, GenerateContentParameters, Candidate} from '@google/genai';
+import {Candidate, GenerateContentParameters, GoogleGenAI, GroundingMetadata, Part} from '@google/genai';
 
 const MAX_RETRIES = 3;
 const delay = (ms: number): Promise<void> => new Promise(resolve => setTimeout(resolve, ms));
@@ -37,7 +37,7 @@ export async function generateFromHistory(request: GenerateContentParameters, go
             // 3. MALFORMED_FUNCTION_CALL 확인
             if (firstCandidate?.finishReason === 'MALFORMED_FUNCTION_CALL') {
                 console.error(`API가 잘못된 함수 호출을 생성했습니다 (MALFORMED_FUNCTION_CALL).`, JSON.stringify(result, null, 2));
-                return {error: 'AI 모델이 요청을 처리하는 중 오류가 발생했습니다. 다시 시도해 주세요.'};
+                return {error: 'AI 모델이 요청을 처리하는 중 오류가 발생했습니다. 다시 시도해 주세요. (MALFORMED_FUNCTION_CALL)'};
             }
 
             // 4. 기타 비정상적인 종료 상태 확인 (STOP, MAX_TOKENS는 정상)
