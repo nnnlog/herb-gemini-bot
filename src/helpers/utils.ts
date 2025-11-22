@@ -1,7 +1,7 @@
+import {Content, Part} from "@google/genai";
 import TelegramBot from "node-telegram-bot-api";
 import {Readable} from "stream";
 import {ConversationTurn} from "../services/db.js";
-import {Content, Part} from "@google/genai";
 
 // --- 타입 정의 ---
 // Telegram에서 받은 파일 정보를 Attachment 타입으로 정규화하기 위한 인터페이스
@@ -20,7 +20,7 @@ interface BuildContentsResult {
 // --- 상수 ---
 const imageCache = new Map<string, Buffer>();
 const CACHE_MAX_SIZE = 100;
-const mimeMap: { [key: string]: string } = {
+const mimeMap: {[key: string]: string} = {
     'pdf': 'application/pdf', 'py': 'text/x-python', 'js': 'text/javascript',
     'ts': 'text/typescript', 'java': 'text/x-java-source', 'c': 'text/x-c',
     'cpp': 'text/x-c++', 'cs': 'text/x-csharp', 'swift': 'text/x-swift',
@@ -77,6 +77,20 @@ export async function buildContents(bot: TelegramBot, conversationHistory: Conve
 
     const contents: Content[] = await Promise.all(
         conversationHistory.map(async (turn) => {
+            // 만약 DB에 저장된 원본 parts(thought_signature 포함)가 있다면 그것을 우선 사용
+            if (turn.parts && turn.parts.length > 0) {
+                let parts = turn.parts;
+
+                // image 명령어인 경우 functionCall과 functionResponse 부분 제거
+                if (commandName === 'image') {
+                    parts = parts.filter(part =>
+                        !('functionCall' in part) && !('functionResponse' in part)
+                    );
+                }
+
+                return {role: turn.role, parts};
+            }
+
             turn.files.forEach(file => totalSize += file.file_size || 0);
             const fileParts = await createFileParts(bot, turn.files);
             const parts: Part[] = [...fileParts];

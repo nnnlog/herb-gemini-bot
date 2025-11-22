@@ -1,11 +1,11 @@
-import {generateFromHistory, GenerationOutput} from '../services/aiHandler.js';
-import {logMessage} from '../services/db.js';
-import {sendLongMessage} from '../helpers/utils.js';
+import {GenerateContentParameters} from '@google/genai';
 import {marked} from 'marked';
 import TelegramBot from "node-telegram-bot-api";
 import {Config} from '../config.js';
-import {GenerateContentParameters} from '@google/genai';
 import {handleCommandError, prepareContentForModel} from "../helpers/commandHelper.js";
+import {sendLongMessage} from '../helpers/utils.js';
+import {generateFromHistory, GenerationOutput} from '../services/aiHandler.js';
+import {logMessage} from '../services/db.js';
 
 async function handleChatCommand(commandMsg: TelegramBot.Message, albumMessages: TelegramBot.Message[] = [], bot: TelegramBot, BOT_ID: number, config: Config, replyToId: number) {
     const chatId = commandMsg.chat.id;
@@ -85,7 +85,7 @@ async function handleChatCommand(commandMsg: TelegramBot.Message, albumMessages:
             }
 
             const sentMsg = await sendLongMessage(bot, chatId, marked.parseInline(fullResponse.trim() || '') as string, replyToId);
-            logMessage(sentMsg, BOT_ID, 'chat');
+            logMessage(sentMsg, BOT_ID, 'chat', {parts: result.parts});
         } else {
             const sentMsg = await bot.sendMessage(chatId, "모델이 텍스트 응답을 생성하지 않았습니다.", {reply_to_message_id: replyToId});
             logMessage(sentMsg, BOT_ID, 'error');
@@ -105,3 +105,4 @@ function escapeHtml(text: string): string {
 }
 
 export {handleChatCommand};
+

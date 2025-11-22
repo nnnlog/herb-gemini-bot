@@ -1,7 +1,7 @@
-import {jest, describe, it, expect, beforeEach, afterEach} from '@jest/globals';
+import { jest, describe, it, expect, beforeEach, afterEach } from '@jest/globals';
 import type TelegramBot from 'node-telegram-bot-api';
-import type {ConversationTurn} from '../../src/services/db.js';
-import {Readable} from 'stream';
+import type { ConversationTurn } from '../../src/services/db.js';
+import { Readable } from 'stream';
 
 // --- Mock Setup ---
 
@@ -47,7 +47,7 @@ describe('Utils Helper', () => {
             sendMessage: jest.fn(),
             getFileStream: jest.fn(() => Readable.from(Buffer.from('fake-stream-data'))),
         } as unknown as TelegramBot;
-        (mockBot.sendMessage as jest.Mock).mockResolvedValue({message_id: 12345});
+        (mockBot.sendMessage as jest.Mock).mockResolvedValue({ message_id: 12345 });
     });
 
     afterEach(() => {
@@ -66,23 +66,23 @@ describe('Utils Helper', () => {
     describe('buildContents', () => {
         const createMockCommandMessage = (text: string): TelegramBot.Message => ({
             message_id: 1,
-            chat: {id: 1, type: 'private'},
+            chat: { id: 1, type: 'private' },
             text: text,
-            from: {id: 123, is_bot: false, first_name: 'Test'},
+            from: { id: 123, is_bot: false, first_name: 'Test' },
             date: Date.now() / 1000,
         } as TelegramBot.Message);
 
         it('should create content with only a text part for a simple text message', async () => {
-            const history: ConversationTurn[] = [{role: 'user', text: 'Hello', files: []}];
+            const history: ConversationTurn[] = [{ role: 'user', text: 'Hello', files: [] }];
             mockGetConversationHistory.mockResolvedValue(history);
             const commandMsg = createMockCommandMessage('Hello');
 
-            const {contents} = await utils.buildContents(mockBot, history, commandMsg, [], 'gemini');
+            const { contents } = await utils.buildContents(mockBot, history, commandMsg, [], 'gemini');
 
             expect(contents).toHaveLength(1);
             expect(contents[0]!.role).toBe('user');
             expect(contents[0]!.parts).toHaveLength(1);
-            expect(contents[0]!.parts[0]).toEqual({text: 'Hello'});
+            expect(contents[0]!.parts[0]).toEqual({ text: 'Hello' });
         });
 
         it('should create content with an inlineData part for a message with a photo', async () => {
@@ -90,18 +90,40 @@ describe('Utils Helper', () => {
                 {
                     role: 'user',
                     text: 'Check this image',
-                    files: [{file_id: 'file123', file_unique_id: 'unique123', type: 'photo'}]
+                    files: [{ file_id: 'file123', file_unique_id: 'unique123', type: 'photo' }]
                 }
             ];
             mockGetConversationHistory.mockResolvedValue(history);
             const commandMsg = createMockCommandMessage('Check this image');
 
-            const {contents} = await utils.buildContents(mockBot, history, commandMsg, [], 'image');
+            const { contents } = await utils.buildContents(mockBot, history, commandMsg, [], 'image');
 
             expect(contents[0]!.parts).toHaveLength(2);
             expect(contents[0]!.parts[0]!).toHaveProperty('inlineData');
             // Assert that the underlying stream was called by getFileBuffer
             expect(mockBot.getFileStream).toHaveBeenCalledWith('file123');
+        });
+
+        it('should use stored parts if available in conversation history', async () => {
+            const parts = [{ text: 'thought process' }, { text: 'final response' }];
+            const history: ConversationTurn[] = [
+                {
+                    role: 'model',
+                    text: 'response',
+                    files: [],
+                    parts: parts
+                }
+            ];
+            mockGetConversationHistory.mockResolvedValue(history);
+            const commandMsg = createMockCommandMessage('Next prompt');
+
+            const { contents } = await utils.buildContents(mockBot, history, commandMsg, [], 'gemini');
+
+            expect(contents).toHaveLength(1);
+            expect(contents[0]!.role).toBe('model');
+            expect(contents[0]!.parts).toEqual(parts);
+            // Should NOT call getFileStream or try to rebuild parts from text/files
+            expect(mockBot.getFileStream).not.toHaveBeenCalled();
         });
     });
 });

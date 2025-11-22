@@ -1,4 +1,4 @@
-import {jest, describe, it, expect, beforeEach} from '@jest/globals';
+import {beforeEach, describe, expect, it, jest} from '@jest/globals';
 import TelegramBot from 'node-telegram-bot-api';
 
 // --- Mock Setup ---
@@ -32,7 +32,7 @@ jest.unstable_mockModule('sqlite3', () => ({
 
 // --- Test Suite ---
 describe('DB Service', () => {
-    let logMessage: (msg: TelegramBot.Message, botId: number) => Promise<void>;
+    let logMessage: (msg: TelegramBot.Message, botId: number, commandType?: string | null, metadata?: {parts?: any[]}) => Promise<void>;
     let getConversationHistory: (chatId: number, msg: TelegramBot.Message) => Promise<any[]>;
     let initDb: () => void;
 
@@ -66,8 +66,20 @@ describe('DB Service', () => {
         it('시나리오 A.1: 기본 텍스트 메시지를 raw_messages 테이블에 저장해야 합니다.', async () => {
             const msg = createMockMessage(1, 'Hello', {id: 123, is_bot: false});
             await logMessage(msg, 999);
-            // initDb calls run four times, logMessage calls it again
-            expect(mockDb.run).toHaveBeenCalledTimes(5);
+            // initDb calls run 7 times (5 tables + 2 indexes), logMessage calls it once
+            expect(mockDb.run).toHaveBeenCalledTimes(8);
+        });
+
+        it('시나리오 A.2: 메타데이터(parts)가 있는 경우 model_response_metadata 테이블에 저장해야 합니다.', async () => {
+            const msg = createMockMessage(2, 'Generated Image', {id: 999, is_bot: true});
+            const parts = [{text: 'thought'}, {inlineData: {mimeType: 'image/png', data: '...'}}];
+            await logMessage(msg, 999, 'image', {parts});
+
+            // initDb(7) + raw(1) + attachments(0) + message_metadata(1) + model_response_metadata(1) = 10
+            expect(mockDb.run).toHaveBeenCalledTimes(10);
+            const lastCall = (mockDb.run as jest.Mock).mock.calls[9] as any[];
+            expect(lastCall[0]).toContain('INSERT OR REPLACE INTO model_response_metadata');
+            expect(lastCall[1][2]).toBe(JSON.stringify(parts));
         });
     });
 
@@ -83,9 +95,13 @@ describe('DB Service', () => {
             mockDb.get.mockImplementation((_sql, params, callback) => {
                 const id = Array.isArray(params) ? params[1] : params;
                 process.nextTick(() => {
-                    if (id === 1) callback(null, {data: JSON.stringify(msg1)});
-                    else if (id === 2) callback(null, {data: JSON.stringify(msg2)});
-                    else callback(null, null);
+                    if (typeof _sql === 'string' && _sql.includes('model_response_metadata')) {
+                        callback(null, null); // No parts for these messages
+                    } else {
+                        if (id === 1) callback(null, {data: JSON.stringify(msg1)});
+                        else if (id === 2) callback(null, {data: JSON.stringify(msg2)});
+                        else callback(null, null);
+                    }
                 });
                 return mockDb;
             });
@@ -96,7 +112,44 @@ describe('DB Service', () => {
             expect(history[0]!.role).toBe('user');
             expect(history[1]!.role).toBe('model');
             expect(history[2]!.role).toBe('user');
-            expect(mockDb.get).toHaveBeenCalledTimes(1);
+            expect(history[2]!.role).toBe('user');
+            // getMessage calls + getModelResponseParts calls
+            // msg3 (start) -> getModelResponseParts
+            // msg2 (reply) -> getModelResponseParts
+            // msg1 (reply) -> getModelResponseParts
+            // Total 3 calls to getModelResponseParts.
+            // getMessage is called when traversing reply chain if not in memory object, but here we pass objects.
+            // Wait, getConversationHistory calls getModelResponseParts for EACH message in the chain.
+            // AND it calls getMessage for the last message to check if there is a parent in DB.
+            expect(mockDb.get).toHaveBeenCalledTimes(4);
+        });
+
+        it('시나리오 B.2: 저장된 parts가 있으면 대화 기록에 포함되어야 합니다.', async () => {
+            const msg1 = createMockMessage(1, 'Image Prompt', user);
+            const msg2 = createMockMessage(2, 'Generated Content', bot, msg1);
+            const parts = [{text: 'thought process'}, {text: 'final response'}];
+
+            mockDb.get.mockImplementation((_sql, params, callback) => {
+                const id = Array.isArray(params) ? params[1] : params;
+                process.nextTick(() => {
+                    if (typeof _sql === 'string' && _sql.includes('model_response_metadata')) {
+                        if (id === 2) callback(null, {parts: JSON.stringify(parts)});
+                        else callback(null, null);
+                    } else {
+                        if (id === 1) callback(null, {data: JSON.stringify(msg1)});
+                        else if (id === 2) callback(null, {data: JSON.stringify(msg2)});
+                        else callback(null, null);
+                    }
+                });
+                return mockDb;
+            });
+
+            const history = await getConversationHistory(-100, msg2);
+
+            expect(history).toHaveLength(2);
+            expect(history[0]!.role).toBe('user');
+            expect(history[1]!.role).toBe('model');
+            expect(history[1]!.parts).toEqual(parts);
         });
     });
 });

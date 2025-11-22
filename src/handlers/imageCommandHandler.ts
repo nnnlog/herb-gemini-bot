@@ -1,11 +1,11 @@
-import {generateFromHistory, GenerationOutput} from '../services/aiHandler.js';
-import {logMessage} from '../services/db.js';
-import {sendLongMessage} from '../helpers/utils.js';
+import {GenerateContentParameters} from '@google/genai';
 import {marked} from 'marked';
 import TelegramBot, {InputMediaPhoto} from "node-telegram-bot-api";
 import {Config} from '../config.js';
-import {GenerateContentParameters} from '@google/genai';
 import {handleCommandError, prepareContentForModel} from "../helpers/commandHelper.js";
+import {sendLongMessage} from '../helpers/utils.js';
+import {generateFromHistory, GenerationOutput} from '../services/aiHandler.js';
+import {logMessage} from '../services/db.js';
 
 async function handleImageCommand(commandMsg: TelegramBot.Message, albumMessages: TelegramBot.Message[] = [], bot: TelegramBot, BOT_ID: number, config: Config, replyToId: number) {
     const chatId = commandMsg.chat.id;
@@ -49,7 +49,7 @@ async function handleImageCommand(commandMsg: TelegramBot.Message, albumMessages
                 });
                 const sentMessages = await bot.sendMediaGroup(chatId, media, {reply_to_message_id: replyToId});
                 for (const sentMsg of sentMessages) {
-                    logMessage(sentMsg, BOT_ID, 'image');
+                    logMessage(sentMsg, BOT_ID, 'image', {parts: result.parts});
                 }
             } else {
                 const sentMsg = await bot.sendPhoto(chatId, result.images![0].buffer, {
@@ -57,12 +57,12 @@ async function handleImageCommand(commandMsg: TelegramBot.Message, albumMessages
                     parse_mode: caption ? 'HTML' : undefined,
                     reply_to_message_id: replyToId
                 });
-                logMessage(sentMsg, BOT_ID, 'image');
+                logMessage(sentMsg, BOT_ID, 'image', {parts: result.parts});
             }
             console.log(`성공: 사용자(ID: ${commandMsg.from?.id})에게 ${result.images!.length}개의 콘텐츠 전송 완료.`);
         } else if (hasText) {
             const sentMsg = await sendLongMessage(bot, chatId, marked.parseInline(result.text!) as string, replyToId);
-            logMessage(sentMsg, BOT_ID, 'image');
+            logMessage(sentMsg, BOT_ID, 'image', {parts: result.parts});
         }
     } catch (error: unknown) {
         await handleCommandError(error, bot, chatId, replyToId, BOT_ID, 'image');

@@ -1,5 +1,6 @@
 import sqlite3 from 'sqlite3';
 import TelegramBot from "node-telegram-bot-api";
+import { Part } from "@google/genai";
 
 const db = new sqlite3.Database('./telegram_log.db', (err) => {
     if (err) console.error("데이터베이스 연결 실패:", err.message);
@@ -28,6 +29,7 @@ export interface ConversationTurn {
     role: 'user' | 'model';
     text: string;
     files: Attachment[];
+    parts?: Part[];
 }
 
 // DB 초기화 함수
@@ -73,16 +75,30 @@ export function initDb() {
         PRIMARY KEY (chat_id, message_id)
     )`;
 
+    const createModelResponseMetadataTable = `
+    CREATE TABLE IF NOT EXISTS model_response_metadata (
+        chat_id INTEGER NOT NULL,
+        message_id INTEGER NOT NULL,
+        parts TEXT,
+        FOREIGN KEY (chat_id, message_id) REFERENCES raw_messages(chat_id, message_id),
+        PRIMARY KEY (chat_id, message_id)
+    )`;
+
     db.serialize(() => {
         db.run(createRawMessagesTable);
         db.run(createAttachmentsTable);
         db.run(createMessageAttachmentsTable);
         db.run(createMessageMetadataTable);
+        db.run(createModelResponseMetadataTable);
+
+        // 인덱스 생성
+        db.run("CREATE INDEX IF NOT EXISTS idx_raw_messages_timestamp ON raw_messages(chat_id, timestamp)");
+        db.run("CREATE INDEX IF NOT EXISTS idx_raw_messages_media_group_id ON raw_messages(chat_id, json_extract(data, '$.media_group_id'))");
     });
 }
 
 // 메시지 로깅 메인 함수
-export async function logMessage(msg: TelegramBot.Message, botId: number, commandType: string | null = null) {
+export async function logMessage(msg: TelegramBot.Message, botId: number, commandType: string | null = null, metadata?: { parts?: Part[] }) {
     // 1. 원본 메시지 저장
     const rawSql = `INSERT OR REPLACE INTO raw_messages (message_id, chat_id, user_id, timestamp, data) VALUES (?, ?, ?, ?, ?)`;
     await dbRun(rawSql, [msg.message_id, msg.chat.id, msg.from?.id ?? null, msg.date, JSON.stringify(msg)]);
@@ -105,12 +121,19 @@ export async function logMessage(msg: TelegramBot.Message, botId: number, comman
         await dbRun(metaSql, [msg.chat.id, msg.message_id, commandType]);
     }
 
+    // 4. 모델 응답 메타데이터(parts) 저장
+    if (metadata && metadata.parts) {
+        const modelMetaSql = `INSERT OR REPLACE INTO model_response_metadata (chat_id, message_id, parts) VALUES (?, ?, ?)`;
+        await dbRun(modelMetaSql, [msg.chat.id, msg.message_id, JSON.stringify(metadata.parts)]);
+    }
+
     // 4. 답장 메시지가 DB에 없는 경우 재귀적으로 저장
     if (msg.reply_to_message) {
         const originalMsg = msg.reply_to_message;
         const existingMsg = await getMessage(originalMsg.chat.id, originalMsg.message_id);
         if (!existingMsg) {
             console.log(`[logMessage] DB에 없는 원본 메시지(${originalMsg.message_id})를 저장합니다.`);
+            // 재귀 호출 시에는 metadata를 전달하지 않음 (원본 메시지의 메타데이터는 알 수 없으므로)
             logMessage(originalMsg, botId);
         }
     }
@@ -150,6 +173,20 @@ async function getAttachmentsForMessage(chatId: number, messageId: number): Prom
     return dbAll<Attachment>(sql, [chatId, messageId]);
 }
 
+// 특정 메시지의 모델 응답 메타데이터(parts) 가져오기
+async function getModelResponseParts(chatId: number, messageId: number): Promise<Part[] | undefined> {
+    const sql = `SELECT parts FROM model_response_metadata WHERE chat_id = ? AND message_id = ?`;
+    const row = await dbGet<{ parts: string }>(sql, [chatId, messageId]);
+    if (row && row.parts) {
+        try {
+            return JSON.parse(row.parts);
+        } catch (e) {
+            console.error(`Failed to parse parts for message ${messageId}:`, e);
+        }
+    }
+    return undefined;
+}
+
 // 대화 기록 생성 함수
 export async function getConversationHistory(chatId: number, startMsg: TelegramBot.Message): Promise<ConversationTurn[]> {
     let history: ConversationTurn[] = [];
@@ -186,7 +223,8 @@ export async function getConversationHistory(chatId: number, startMsg: TelegramB
         history.unshift({
             role: currentMsg.from?.is_bot ? 'model' : 'user',
             text: currentMsg.text || currentMsg.caption || '',
-            files: files
+            files: files,
+            parts: await getModelResponseParts(chatId, currentMsg.message_id)
         });
 
         // 다음 메시지로 이동
