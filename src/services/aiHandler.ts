@@ -6,7 +6,7 @@ const delay = (ms: number): Promise<void> => new Promise(resolve => setTimeout(r
 // API 응답을 감싸는 명확한 출력 타입 정의
 export interface GenerationOutput {
     error?: string;
-    images?: { buffer: Buffer; mimeType: string | undefined; }[];
+    images?: {buffer: Buffer; mimeType: string | undefined;}[];
     parts?: Part[];
     text?: string; // result.text를 직접 사용하기 위한 필드 추가
     groundingMetadata?: GroundingMetadata;
@@ -34,7 +34,21 @@ export async function generateFromHistory(request: GenerateContentParameters, go
                 return {error: '모델이 생성한 내용이 안전 정책에 따라 차단되었습니다.'};
             }
 
-            // 3. 이미지 데이터 추출 (모든 후보에서)
+            // 3. MALFORMED_FUNCTION_CALL 확인
+            if (firstCandidate?.finishReason === 'MALFORMED_FUNCTION_CALL') {
+                console.error(`API가 잘못된 함수 호출을 생성했습니다 (MALFORMED_FUNCTION_CALL).`, JSON.stringify(result, null, 2));
+                return {error: 'AI 모델이 요청을 처리하는 중 오류가 발생했습니다. 다시 시도해 주세요.'};
+            }
+
+            // 4. 기타 비정상적인 종료 상태 확인 (STOP, MAX_TOKENS는 정상)
+            if (firstCandidate?.finishReason &&
+                firstCandidate.finishReason !== 'STOP' &&
+                firstCandidate.finishReason !== 'MAX_TOKENS') {
+                console.error(`비정상적인 종료 상태: ${firstCandidate.finishReason}`, JSON.stringify(result, null, 2));
+                return {error: `요청 처리 중 오류가 발생했습니다. (${firstCandidate.finishReason})`};
+            }
+
+            // 5. 이미지 데이터 추출 (모든 후보에서)
             const outputImages = result.candidates?.reduce((acc: {
                 buffer: Buffer;
                 mimeType: string | undefined;
@@ -54,7 +68,7 @@ export async function generateFromHistory(request: GenerateContentParameters, go
             }, []);
 
 
-            // 4. 최종 응답 객체 생성
+            // 6. 최종 응답 객체 생성
             const finalResponse: GenerationOutput = {};
 
             if (outputImages && outputImages.length > 0) {
@@ -74,9 +88,10 @@ export async function generateFromHistory(request: GenerateContentParameters, go
                 finalResponse.groundingMetadata = firstCandidate.groundingMetadata;
             }
 
-            // 5. JS 버전과 동일하게, 유효한 콘텐츠가 있는지 확인
+            // 7. JS 버전과 동일하게, 유효한 콘텐츠가 있는지 확인
             if (Object.keys(finalResponse).length === 0) {
-                console.error("API 응답에 이미지 또는 텍스트 데이터가 없습니다.", JSON.stringify(result, null, 2));
+                const finishReason = firstCandidate?.finishReason || 'UNKNOWN';
+                console.error(`API 응답에 이미지 또는 텍스트 데이터가 없습니다. (finishReason: ${finishReason})`, JSON.stringify(result, null, 2));
                 return {error: 'API가 인식할 수 없는 응답을 반환했습니다.'};
             }
 

@@ -156,4 +156,63 @@ describe('AI Handler Service - generateFromHistory', () => {
         const result = await generateFromHistory(request, 'fake-api-key');
         expect(result.error).toContain('API 오류가 발생했습니다');
     });
+
+    it('시나리오 3.7: API가 MALFORMED_FUNCTION_CALL로 응답하면, 명확한 오류 메시지를 반환해야 합니다.', async () => {
+        mockGenerateContent.mockResolvedValue({
+            text: '',
+            candidates: [{
+                finishReason: 'MALFORMED_FUNCTION_CALL',
+                content: {}
+            }],
+            promptFeedback: undefined
+        });
+        const request = {model: 'gemini-pro', contents: []};
+        const result = await generateFromHistory(request, 'fake-api-key');
+        expect(result.error).toContain('AI 모델이 요청을 처리하는 중 오류가 발생했습니다');
+    });
+
+    it('시나리오 3.8: API가 비정상적인 finishReason을 반환하면, 해당 이유를 포함한 오류를 반환해야 합니다.', async () => {
+        mockGenerateContent.mockResolvedValue({
+            text: '',
+            candidates: [{
+                finishReason: 'RECITATION',
+                content: {}
+            }],
+            promptFeedback: undefined
+        });
+        const request = {model: 'gemini-pro', contents: []};
+        const result = await generateFromHistory(request, 'fake-api-key');
+        expect(result.error).toContain('요청 처리 중 오류가 발생했습니다');
+        expect(result.error).toContain('RECITATION');
+    });
+
+    it('시나리오 3.9: 정상적인 finishReason (STOP)인 경우, 정상적으로 처리되어야 합니다.', async () => {
+        mockGenerateContent.mockResolvedValue({
+            text: 'Normal response',
+            candidates: [{
+                finishReason: 'STOP',
+                content: {parts: [{text: 'Normal response'}]}
+            }],
+            promptFeedback: undefined
+        });
+        const request = {model: 'gemini-pro', contents: []};
+        const result = await generateFromHistory(request, 'fake-api-key');
+        expect(result.error).toBeUndefined();
+        expect(result.text).toBe('Normal response');
+    });
+
+    it('시나리오 3.10: 정상적인 finishReason (MAX_TOKENS)인 경우, 정상적으로 처리되어야 합니다.', async () => {
+        mockGenerateContent.mockResolvedValue({
+            text: 'Response cut off due to max tokens',
+            candidates: [{
+                finishReason: 'MAX_TOKENS',
+                content: {parts: [{text: 'Response cut off due to max tokens'}]}
+            }],
+            promptFeedback: undefined
+        });
+        const request = {model: 'gemini-pro', contents: []};
+        const result = await generateFromHistory(request, 'fake-api-key');
+        expect(result.error).toBeUndefined();
+        expect(result.text).toBe('Response cut off due to max tokens');
+    });
 });
