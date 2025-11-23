@@ -17,6 +17,11 @@ interface BuildContentsResult {
     totalSize: number;
 }
 
+export interface ImageData {
+    buffer: Buffer;
+    mimeType: string;
+}
+
 // --- 상수 ---
 const imageCache = new Map<string, Buffer>();
 const CACHE_MAX_SIZE = 100;
@@ -124,19 +129,26 @@ export async function buildContents(bot: TelegramBot, conversationHistory: Conve
     return {contents, totalSize};
 }
 
-export async function sendLongMessage(bot: TelegramBot, chatId: number, text: string, replyToId?: number): Promise<TelegramBot.Message> {
+export async function sendLongMessage(bot: TelegramBot, chatId: number, text: string, replyToId?: number, images?: ImageData[]): Promise<TelegramBot.Message> {
     const MAX_LENGTH = 4096;
-    if (text.length <= MAX_LENGTH) {
+    const CAPTION_MAX_LENGTH = 1024;
+
+    // 텍스트가 짧고 이미지가 없는 경우: 단순 전송
+    if (text.length <= MAX_LENGTH && (!images || images.length === 0)) {
         return bot.sendMessage(chatId, text, {reply_to_message_id: replyToId, parse_mode: 'HTML'});
     }
 
+    // 텍스트 분할 - 이미지가 있으면 첫 청크는 caption 길이 제한 적용
     const chunks: string[] = [];
     let currentChunk = "";
     let inPreBlock = false;
     const lines = text.split('\n');
+    const firstChunkMaxLength = (images && images.length > 0) ? CAPTION_MAX_LENGTH : MAX_LENGTH;
 
     for (const line of lines) {
-        if (currentChunk.length + line.length + 1 > MAX_LENGTH) {
+        const maxLength = chunks.length === 0 ? firstChunkMaxLength : MAX_LENGTH;
+
+        if (currentChunk.length + line.length + 1 > maxLength) {
             if (inPreBlock) {
                 currentChunk += '\n</pre>';
             }
@@ -153,10 +165,47 @@ export async function sendLongMessage(bot: TelegramBot, chatId: number, text: st
         chunks.push(currentChunk);
     }
 
-    let currentReplyToId: number | undefined = replyToId;
-    let lastSentMessage: TelegramBot.Message | null = null;
+    // 첫 번째 메시지 전송 (이미지 포함 여부에 따라 분기)
+    let firstMessage: TelegramBot.Message;
+    const firstChunk = chunks[0] || '';
 
-    for (let i = 0; i < chunks.length; i++) {
+    if (images && images.length > 0) {
+        const hasCaption = firstChunk.trim().length > 0;
+
+        if (images.length === 1) {
+            // 단일 이미지: sendPhoto
+            const options: any = {reply_to_message_id: replyToId};
+            if (hasCaption) {
+                options.caption = firstChunk;
+                options.parse_mode = 'HTML';
+            }
+            firstMessage = await bot.sendPhoto(chatId, images[0].buffer, options);
+        } else {
+            // 다중 이미지: sendMediaGroup
+            const mediaGroup: TelegramBot.InputMediaPhoto[] = images.map((img, index) => ({
+                type: 'photo',
+                media: img.buffer as any,
+                caption: (index === 0 && hasCaption) ? firstChunk : undefined,
+                parse_mode: (index === 0 && hasCaption) ? 'HTML' : undefined
+            }));
+            const sentMessages = await bot.sendMediaGroup(chatId, mediaGroup, {
+                reply_to_message_id: replyToId
+            });
+            firstMessage = sentMessages[0];
+        }
+    } else {
+        // 이미지 없음: 일반 메시지
+        firstMessage = await bot.sendMessage(chatId, firstChunk, {
+            reply_to_message_id: replyToId,
+            parse_mode: 'HTML'
+        });
+    }
+
+    // 나머지 청크 전송 (텍스트만)
+    let currentReplyToId = firstMessage.message_id;
+    let lastSentMessage = firstMessage;
+
+    for (let i = 1; i < chunks.length; i++) {
         const chunk = chunks[i];
         const sentMsg = await bot.sendMessage(chatId, chunk, {
             reply_to_message_id: currentReplyToId,
@@ -165,5 +214,6 @@ export async function sendLongMessage(bot: TelegramBot, chatId: number, text: st
         currentReplyToId = sentMsg.message_id;
         lastSentMessage = sentMsg;
     }
-    return lastSentMessage!;
+
+    return lastSentMessage;
 }

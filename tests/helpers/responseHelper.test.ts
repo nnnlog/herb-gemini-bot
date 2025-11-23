@@ -73,7 +73,8 @@ describe('responseHelper', () => {
 
         await handleGeminiResponse(bot, mockMessage, result, BOT_ID, REPLY_TO_ID);
 
-        expect(mockSendLongMessage).toHaveBeenCalledWith(bot, 999, 'Hello world', REPLY_TO_ID);
+        // sendLongMessage가 호출되었고 images는 undefined
+        expect(mockSendLongMessage).toHaveBeenCalledWith(bot, 999, 'Hello world', REPLY_TO_ID, undefined);
         expect(mockLogMessage).toHaveBeenCalledWith(expect.anything(), BOT_ID, 'chat', {parts: result.parts});
     });
 
@@ -83,15 +84,29 @@ describe('responseHelper', () => {
             parts: [{text: 'Image caption'}],
             text: 'Image caption'
         };
+        mockSendLongMessage.mockResolvedValue({
+            message_id: 555,
+            chat: {id: 999},
+            from: {id: BOT_ID},
+            date: 1234567890
+        });
 
         await handleGeminiResponse(bot, mockMessage, result, BOT_ID, REPLY_TO_ID, 'image');
 
-        // 1. Send Photo
-        expect(bot.sendPhoto).toHaveBeenCalled();
-        // 2. Send Document
+        // sendLongMessage가 images와 함께 호출됨
+        expect(mockSendLongMessage).toHaveBeenCalledWith(
+            bot,
+            999,
+            'Image caption',
+            REPLY_TO_ID,
+            result.images
+        );
+
+        // 원본 파일 전송 (sendDocument)
         expect(bot.sendDocument).toHaveBeenCalled();
 
-        expect(mockLogMessage).toHaveBeenCalledTimes(2); // Photo + Document
+        // logMessage 호출: sendLongMessage 결과 + sendDocument
+        expect(mockLogMessage).toHaveBeenCalledTimes(2);
     });
 
     it('should handle image response (multiple images)', async () => {
@@ -103,19 +118,27 @@ describe('responseHelper', () => {
             parts: [{text: 'Album caption'}],
             text: 'Album caption'
         };
+        mockSendLongMessage.mockResolvedValue({
+            message_id: 555,
+            chat: {id: 999},
+            from: {id: BOT_ID},
+            date: 1234567890
+        });
 
         await handleGeminiResponse(bot, mockMessage, result, BOT_ID, REPLY_TO_ID, 'image');
 
-        // 1. Send MediaGroup (Photos)
-        expect(bot.sendMediaGroup).toHaveBeenCalledTimes(2); // Photos + Documents
+        // sendLongMessage가 images와 함께 호출됨
+        expect(mockSendLongMessage).toHaveBeenCalledWith(
+            bot,
+            999,
+            'Album caption',
+            REPLY_TO_ID,
+            result.images
+        );
 
-        // Check first call (Photos)
-        const photoArgs = (bot.sendMediaGroup as jest.Mock).mock.calls[0];
-        expect(photoArgs[1]).toHaveLength(2);
-        expect(photoArgs[1][0].type).toBe('photo');
-
-        // Check second call (Documents)
-        const docArgs = (bot.sendMediaGroup as jest.Mock).mock.calls[1];
+        // 원본 파일 전송 (sendMediaGroup for documents)
+        expect(bot.sendMediaGroup).toHaveBeenCalledTimes(1);
+        const docArgs = (bot.sendMediaGroup as jest.Mock).mock.calls[0];
         expect(docArgs[1]).toHaveLength(2);
         expect(docArgs[1][0].type).toBe('document');
     });
