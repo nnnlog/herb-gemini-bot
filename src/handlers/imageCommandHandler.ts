@@ -39,25 +39,50 @@ async function handleImageCommand(commandMsg: TelegramBot.Message, albumMessages
             const caption = hasText ? marked.parseInline(result.text!) as string : undefined;
 
             if (result.images!.length > 1) {
-                const media: InputMediaPhoto[] = result.images!.map((img, index) => {
+                // 1. 앨범(사진) 전송
+                const photoMedia: InputMediaPhoto[] = result.images!.map((img, index) => {
                     const item: InputMediaPhoto = {type: 'photo', media: img.buffer as any};
-                    if (index === 0 && caption) { // 캡션은 첫 번째 이미지에만 적용
+                    if (index === 0 && caption) {
                         item.caption = caption;
                         item.parse_mode = 'HTML';
                     }
                     return item;
                 });
-                const sentMessages = await bot.sendMediaGroup(chatId, media, {reply_to_message_id: replyToId});
-                for (const sentMsg of sentMessages) {
+                const sentPhotoMessages = await bot.sendMediaGroup(chatId, photoMedia, {reply_to_message_id: replyToId});
+                for (const sentMsg of sentPhotoMessages) {
                     logMessage(sentMsg, BOT_ID, 'image', {parts: result.parts});
                 }
+
+                // 2. 파일(원본) 전송 - 앨범의 첫 번째 사진에 답장
+                const replyToPhotoId = sentPhotoMessages[0].message_id;
+                const docMedia: any[] = result.images!.map((img, index) => {
+                    return {
+                        type: 'document',
+                        media: img.buffer as any
+                    };
+                });
+                const sentDocMessages = await bot.sendMediaGroup(chatId, docMedia, {reply_to_message_id: replyToPhotoId});
+                for (const sentMsg of sentDocMessages) {
+                    logMessage(sentMsg, BOT_ID, 'image', {parts: result.parts});
+                }
+
             } else {
-                const sentMsg = await bot.sendPhoto(chatId, result.images![0].buffer, {
+                // 1. 사진 전송
+                const sentPhotoMsg = await bot.sendPhoto(chatId, result.images![0].buffer, {
                     caption: caption,
                     parse_mode: caption ? 'HTML' : undefined,
                     reply_to_message_id: replyToId
                 });
-                logMessage(sentMsg, BOT_ID, 'image', {parts: result.parts});
+                logMessage(sentPhotoMsg, BOT_ID, 'image', {parts: result.parts});
+
+                // 2. 파일 전송 - 보낸 사진에 답장
+                const sentDocMsg = await bot.sendDocument(chatId, result.images![0].buffer, {
+                    reply_to_message_id: sentPhotoMsg.message_id
+                }, {
+                    filename: 'image.png', // 파일명 지정
+                    contentType: result.images![0].mimeType || 'image/png'
+                });
+                logMessage(sentDocMsg, BOT_ID, 'image', {parts: result.parts});
             }
             console.log(`성공: 사용자(ID: ${commandMsg.from?.id})에게 ${result.images!.length}개의 콘텐츠 전송 완료.`);
         } else if (hasText) {
@@ -72,3 +97,4 @@ async function handleImageCommand(commandMsg: TelegramBot.Message, albumMessages
 }
 
 export {handleImageCommand};
+
