@@ -89,7 +89,13 @@ export async function handleGeminiResponse(
     // 3. 텍스트 + 이미지 통합 전송 (sendLongMessage)
     if (hasText || hasImages) {
         const textToSend = hasText ? fullText : '';
-        const images = hasImages ? result.images : undefined;
+        // ImageData 타입 호환을 위해 mimeType이 undefined인 경우 기본값 설정
+        const images = hasImages
+            ? result.images!.map(img => ({
+                buffer: img.buffer,
+                mimeType: img.mimeType || 'image/png'
+            }))
+            : undefined;
 
         const lastTextMsg = await sendLongMessage(bot, chatId, textToSend, replyToId, images);
         logMessage(lastTextMsg, BOT_ID, logType, {parts: result.parts});
@@ -110,9 +116,12 @@ export async function handleGeminiResponse(
                 const docMedia = result.images!.map((img, index) => ({
                     type: 'document' as const,
                     media: img.buffer as any,
-                    caption: index === 0 ? '원본 파일' : undefined
+                    caption: undefined,
+                    // caption: index + 1 === 0 ? '원본 파일' : undefined,
+                    file_name: `image_${index + 1}.png`,
+                    mime_type: img.mimeType || 'image/png'
                 }));
-                const docMsgs = await bot.sendMediaGroup(chatId, docMedia, {
+                const docMsgs = await bot.sendMediaGroup(chatId, docMedia as any, {
                     reply_to_message_id: lastTextMsg.message_id
                 });
                 for (const docMsg of docMsgs) {
