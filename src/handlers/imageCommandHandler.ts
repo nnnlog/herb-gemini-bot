@@ -1,9 +1,8 @@
 import {GenerateContentParameters} from '@google/genai';
-import {marked} from 'marked';
-import TelegramBot, {InputMediaPhoto} from "node-telegram-bot-api";
+import TelegramBot from "node-telegram-bot-api";
 import {Config} from '../config.js';
 import {handleCommandError, prepareContentForModel} from "../helpers/commandHelper.js";
-import {sendLongMessage} from '../helpers/utils.js';
+import {handleGeminiResponse} from '../helpers/responseHelper.js';
 import {generateFromHistory, GenerationOutput} from '../services/aiHandler.js';
 import {logMessage} from '../services/db.js';
 
@@ -25,70 +24,8 @@ async function handleImageCommand(commandMsg: TelegramBot.Message, albumMessages
         };
         const result: GenerationOutput = await generateFromHistory(request, config.googleApiKey!);
 
-        if (result.error) {
-            console.error(`[MODEL_ERROR] ChatID(${chatId}):`, result.error);
-            const sentMsg = await bot.sendMessage(chatId, `생성 실패: ${result.error}`, {reply_to_message_id: replyToId});
-            logMessage(sentMsg, BOT_ID, 'error');
-            return;
-        }
+        await handleGeminiResponse(bot, commandMsg, result, BOT_ID, replyToId, 'image');
 
-        const hasText = result.text && result.text.length > 0;
-        const hasImages = result.images && result.images.length > 0;
-
-        if (hasImages) {
-            const caption = hasText ? marked.parseInline(result.text!) as string : undefined;
-
-            if (result.images!.length > 1) {
-                // 1. 앨범(사진) 전송
-                const photoMedia: InputMediaPhoto[] = result.images!.map((img, index) => {
-                    const item: InputMediaPhoto = {type: 'photo', media: img.buffer as any};
-                    if (index === 0 && caption) {
-                        item.caption = caption;
-                        item.parse_mode = 'HTML';
-                    }
-                    return item;
-                });
-                const sentPhotoMessages = await bot.sendMediaGroup(chatId, photoMedia, {reply_to_message_id: replyToId});
-                for (const sentMsg of sentPhotoMessages) {
-                    logMessage(sentMsg, BOT_ID, 'image', {parts: result.parts});
-                }
-
-                // 2. 파일(원본) 전송 - 앨범의 첫 번째 사진에 답장
-                const replyToPhotoId = sentPhotoMessages[0].message_id;
-                const docMedia: any[] = result.images!.map((img, index) => {
-                    return {
-                        type: 'document',
-                        media: img.buffer as any
-                    };
-                });
-                const sentDocMessages = await bot.sendMediaGroup(chatId, docMedia, {reply_to_message_id: replyToPhotoId});
-                for (const sentMsg of sentDocMessages) {
-                    logMessage(sentMsg, BOT_ID, 'image', {parts: result.parts});
-                }
-
-            } else {
-                // 1. 사진 전송
-                const sentPhotoMsg = await bot.sendPhoto(chatId, result.images![0].buffer, {
-                    caption: caption,
-                    parse_mode: caption ? 'HTML' : undefined,
-                    reply_to_message_id: replyToId
-                });
-                logMessage(sentPhotoMsg, BOT_ID, 'image', {parts: result.parts});
-
-                // 2. 파일 전송 - 보낸 사진에 답장
-                const sentDocMsg = await bot.sendDocument(chatId, result.images![0].buffer, {
-                    reply_to_message_id: sentPhotoMsg.message_id
-                }, {
-                    filename: 'image.png', // 파일명 지정
-                    contentType: result.images![0].mimeType || 'image/png'
-                });
-                logMessage(sentDocMsg, BOT_ID, 'image', {parts: result.parts});
-            }
-            console.log(`성공: 사용자(ID: ${commandMsg.from?.id})에게 ${result.images!.length}개의 콘텐츠 전송 완료.`);
-        } else if (hasText) {
-            const sentMsg = await sendLongMessage(bot, chatId, marked.parseInline(result.text!) as string, replyToId);
-            logMessage(sentMsg, BOT_ID, 'image', {parts: result.parts});
-        }
     } catch (error: unknown) {
         await handleCommandError(error, bot, chatId, replyToId, BOT_ID, 'image');
     } finally {

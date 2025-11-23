@@ -1,11 +1,10 @@
-import {generateFromHistory, GenerationOutput} from '../services/aiHandler.js';
-import {logMessage} from '../services/db.js';
-import {sendLongMessage} from '../helpers/utils.js';
-import {marked} from 'marked';
+import {GenerateContentParameters} from '@google/genai';
 import TelegramBot from "node-telegram-bot-api";
 import {Config} from '../config.js';
-import {GenerateContentParameters} from '@google/genai';
 import {handleCommandError, prepareContentForModel} from "../helpers/commandHelper.js";
+import {handleGeminiResponse} from '../helpers/responseHelper.js';
+import {generateFromHistory, GenerationOutput} from '../services/aiHandler.js';
+import {logMessage} from '../services/db.js';
 
 const summarizePrompt = `# 역할 (Role)
 당신은 모든 분야를 아우르는 **고밀도 정보 분석가**입니다. 당신의 임무는 사용자가 제공한 웹페이지(뉴스, 블로그, 보고서 등)의 내용을 분석하여, 바쁜 전문가들이 빠르게 전체 내용을 파악할 수 있는 **'GeekNews(Hada.io)' 스타일의 고밀도 정보 리포트**를 작성하는 것입니다.
@@ -126,57 +125,8 @@ async function handleSummarizeCommand(commandMsg: TelegramBot.Message, albumMess
 
         const result: GenerationOutput = await generateFromHistory(request, config.googleApiKey!);
 
-        if (result.error) {
-            const sentMsg = await bot.sendMessage(chatId, `응답 생성 실패: ${result.error}`, {reply_to_message_id: replyToId});
-            logMessage(sentMsg, BOT_ID, 'error');
-        } else if (result.parts && result.parts.length > 0) {
-            let fullResponse = '';
-            for (const part of result.parts) {
-                if (part.text) {
-                    fullResponse += part.text;
-                } else if (part.executableCode) {
-                    const code = part.executableCode.code;
-                    fullResponse += `\n\n<b>[코드 실행]</b>\n<pre><code class="language-python">${escapeHtml(code ?? '')}</code></pre>`;
-                } else if (part.codeExecutionResult) {
-                    const output = part.codeExecutionResult.output;
-                    const outcome = part.codeExecutionResult.outcome;
-                    const outcomeIcon = outcome === 'OUTCOME_OK' ? '✅' : '❌';
-                    fullResponse += `\n<b>[실행 결과 ${outcomeIcon}]</b>\n<pre>${escapeHtml(output ?? '')}</pre>`;
-                }
-            }
+        await handleGeminiResponse(bot, commandMsg, result, BOT_ID, replyToId, 'summarize');
 
-            if (result.groundingMetadata) {
-                const {webSearchQueries, groundingChunks} = result.groundingMetadata;
-                let metadataText = '\n';
-
-                if (webSearchQueries && webSearchQueries.length > 0) {
-                    metadataText += `\n---\n🔍 **검색어**: ${webSearchQueries.map(q => `'${q}'`).join(', ')}\n`;
-                }
-
-                if (groundingChunks && groundingChunks.length > 0) {
-                    const uniqueSources = new Map<string, string>();
-                    groundingChunks.forEach(chunk => {
-                        if (chunk.web && chunk.web.uri && chunk.web.title) {
-                            uniqueSources.set(chunk.web.uri, chunk.web.title);
-                        }
-                    });
-
-                    if (uniqueSources.size > 0) {
-                        metadataText += `\n📚 **출처**:\n`;
-                        uniqueSources.forEach((title, uri) => {
-                            metadataText += ` - [${title}](${uri})\n`;
-                        });
-                    }
-                }
-                fullResponse += metadataText;
-            }
-
-            const sentMsg = await sendLongMessage(bot, chatId, marked.parseInline(fullResponse.trim() || '') as string, replyToId);
-            logMessage(sentMsg, BOT_ID, 'summarize');
-        } else {
-            const sentMsg = await bot.sendMessage(chatId, "모델이 텍스트 응답을 생성하지 않았습니다.", {reply_to_message_id: replyToId});
-            logMessage(sentMsg, BOT_ID, 'error');
-        }
     } catch (error: unknown) {
         await handleCommandError(error, bot, chatId, replyToId, BOT_ID, 'summarize');
     } finally {
@@ -184,11 +134,5 @@ async function handleSummarizeCommand(commandMsg: TelegramBot.Message, albumMess
     }
 }
 
-function escapeHtml(text: string): string {
-    return text
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;");
-}
-
 export {handleSummarizeCommand};
+
