@@ -129,13 +129,15 @@ export async function buildContents(bot: TelegramBot, conversationHistory: Conve
     return {contents, totalSize};
 }
 
-export async function sendLongMessage(bot: TelegramBot, chatId: number, text: string, replyToId?: number, images?: ImageData[]): Promise<TelegramBot.Message> {
+export async function sendLongMessage(bot: TelegramBot, chatId: number, text: string, replyToId?: number, images?: ImageData[]): Promise<TelegramBot.Message[]> {
     const MAX_LENGTH = 4096;
     const CAPTION_MAX_LENGTH = 1024;
+    const sentMessages: TelegramBot.Message[] = [];
 
     // 텍스트가 짧고 이미지가 없는 경우: 단순 전송
     if (text.length <= MAX_LENGTH && (!images || images.length === 0)) {
-        return bot.sendMessage(chatId, text, {reply_to_message_id: replyToId, parse_mode: 'HTML'});
+        const msg = await bot.sendMessage(chatId, text, {reply_to_message_id: replyToId, parse_mode: 'HTML'});
+        return [msg];
     }
 
     // 텍스트 분할 - 이미지가 있으면 첫 청크는 caption 길이 제한 적용
@@ -180,6 +182,7 @@ export async function sendLongMessage(bot: TelegramBot, chatId: number, text: st
                 options.parse_mode = 'HTML';
             }
             firstMessage = await bot.sendPhoto(chatId, images[0].buffer, options);
+            sentMessages.push(firstMessage);
         } else {
             // 다중 이미지: sendMediaGroup
             const mediaGroup: TelegramBot.InputMediaPhoto[] = images.map((img, index) => ({
@@ -188,10 +191,11 @@ export async function sendLongMessage(bot: TelegramBot, chatId: number, text: st
                 caption: (index === 0 && hasCaption) ? firstChunk : undefined,
                 parse_mode: (index === 0 && hasCaption) ? 'HTML' : undefined
             }));
-            const sentMessages = await bot.sendMediaGroup(chatId, mediaGroup, {
+            const msgs = await bot.sendMediaGroup(chatId, mediaGroup, {
                 reply_to_message_id: replyToId
             });
-            firstMessage = sentMessages[0];
+            sentMessages.push(...msgs);
+            firstMessage = msgs[0]; // 첫 번째 메시지를 기준으로 답장 연결
         }
     } else {
         // 이미지 없음: 일반 메시지
@@ -199,11 +203,11 @@ export async function sendLongMessage(bot: TelegramBot, chatId: number, text: st
             reply_to_message_id: replyToId,
             parse_mode: 'HTML'
         });
+        sentMessages.push(firstMessage);
     }
 
     // 나머지 청크 전송 (텍스트만)
     let currentReplyToId = firstMessage.message_id;
-    let lastSentMessage = firstMessage;
 
     for (let i = 1; i < chunks.length; i++) {
         const chunk = chunks[i];
@@ -211,9 +215,9 @@ export async function sendLongMessage(bot: TelegramBot, chatId: number, text: st
             reply_to_message_id: currentReplyToId,
             parse_mode: 'HTML'
         });
+        sentMessages.push(sentMsg);
         currentReplyToId = sentMsg.message_id;
-        lastSentMessage = sentMsg;
     }
 
-    return lastSentMessage;
+    return sentMessages;
 }

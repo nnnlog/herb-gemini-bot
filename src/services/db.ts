@@ -1,6 +1,6 @@
-import sqlite3 from 'sqlite3';
+import {Part} from "@google/genai";
 import TelegramBot from "node-telegram-bot-api";
-import { Part } from "@google/genai";
+import sqlite3 from 'sqlite3';
 
 const db = new sqlite3.Database('./telegram_log.db', (err) => {
     if (err) console.error("데이터베이스 연결 실패:", err.message);
@@ -80,6 +80,7 @@ export function initDb() {
         chat_id INTEGER NOT NULL,
         message_id INTEGER NOT NULL,
         parts TEXT,
+        linked_message_id INTEGER,
         FOREIGN KEY (chat_id, message_id) REFERENCES raw_messages(chat_id, message_id),
         PRIMARY KEY (chat_id, message_id)
     )`;
@@ -94,11 +95,16 @@ export function initDb() {
         // 인덱스 생성
         db.run("CREATE INDEX IF NOT EXISTS idx_raw_messages_timestamp ON raw_messages(chat_id, timestamp)");
         db.run("CREATE INDEX IF NOT EXISTS idx_raw_messages_media_group_id ON raw_messages(chat_id, json_extract(data, '$.media_group_id'))");
+
+        // 마이그레이션: linked_message_id 컬럼 추가 (기존 테이블이 있는 경우)
+        db.run("ALTER TABLE model_response_metadata ADD COLUMN linked_message_id INTEGER", (err) => {
+            // 컬럼이 이미 존재하면 에러가 발생하므로 무시
+        });
     });
 }
 
 // 메시지 로깅 메인 함수
-export async function logMessage(msg: TelegramBot.Message, botId: number, commandType: string | null = null, metadata?: { parts?: Part[] }) {
+export async function logMessage(msg: TelegramBot.Message, botId: number, commandType: string | null = null, metadata?: {parts?: Part[], linkedMessageId?: number}) {
     // 1. 원본 메시지 저장
     const rawSql = `INSERT OR REPLACE INTO raw_messages (message_id, chat_id, user_id, timestamp, data) VALUES (?, ?, ?, ?, ?)`;
     await dbRun(rawSql, [msg.message_id, msg.chat.id, msg.from?.id ?? null, msg.date, JSON.stringify(msg)]);
@@ -121,13 +127,18 @@ export async function logMessage(msg: TelegramBot.Message, botId: number, comman
         await dbRun(metaSql, [msg.chat.id, msg.message_id, commandType]);
     }
 
-    // 4. 모델 응답 메타데이터(parts) 저장
-    if (metadata && metadata.parts) {
-        const modelMetaSql = `INSERT OR REPLACE INTO model_response_metadata (chat_id, message_id, parts) VALUES (?, ?, ?)`;
-        await dbRun(modelMetaSql, [msg.chat.id, msg.message_id, JSON.stringify(metadata.parts)]);
+    // 4. 모델 응답 메타데이터(parts, linked_message_id) 저장
+    if (metadata && (metadata.parts || metadata.linkedMessageId)) {
+        const modelMetaSql = `INSERT OR REPLACE INTO model_response_metadata (chat_id, message_id, parts, linked_message_id) VALUES (?, ?, ?, ?)`;
+        await dbRun(modelMetaSql, [
+            msg.chat.id,
+            msg.message_id,
+            metadata.parts ? JSON.stringify(metadata.parts) : null,
+            metadata.linkedMessageId ?? null
+        ]);
     }
 
-    // 4. 답장 메시지가 DB에 없는 경우 재귀적으로 저장
+    // 5. 답장 메시지가 DB에 없는 경우 재귀적으로 저장
     if (msg.reply_to_message) {
         const originalMsg = msg.reply_to_message;
         const existingMsg = await getMessage(originalMsg.chat.id, originalMsg.message_id);
@@ -156,7 +167,7 @@ export async function getMessageMetadata(chatId: number, messageId: number): Pro
 export function getAlbumMessages(chatId: number, mediaGroupId: string): Promise<TelegramBot.Message[]> {
     return new Promise((resolve, reject) => {
         const sql = `SELECT data FROM raw_messages WHERE chat_id = ? AND json_extract(data, '$.media_group_id') = ? ORDER BY message_id ASC`;
-        db.all(sql, [chatId, mediaGroupId], (err, rows: { data: string }[]) => {
+        db.all(sql, [chatId, mediaGroupId], (err, rows: {data: string}[]) => {
             if (err) reject(err);
             else resolve(rows.map(r => JSON.parse(r.data)));
         });
@@ -175,13 +186,24 @@ async function getAttachmentsForMessage(chatId: number, messageId: number): Prom
 
 // 특정 메시지의 모델 응답 메타데이터(parts) 가져오기
 async function getModelResponseParts(chatId: number, messageId: number): Promise<Part[] | undefined> {
-    const sql = `SELECT parts FROM model_response_metadata WHERE chat_id = ? AND message_id = ?`;
-    const row = await dbGet<{ parts: string }>(sql, [chatId, messageId]);
-    if (row && row.parts) {
-        try {
-            return JSON.parse(row.parts);
-        } catch (e) {
-            console.error(`Failed to parse parts for message ${messageId}:`, e);
+    const sql = `SELECT parts, linked_message_id FROM model_response_metadata WHERE chat_id = ? AND message_id = ?`;
+    const row = await dbGet<{parts: string, linked_message_id: number | null}>(sql, [chatId, messageId]);
+
+    if (row) {
+        // 1. parts가 있으면 바로 반환
+        if (row.parts) {
+            try {
+                return JSON.parse(row.parts);
+            } catch (e) {
+                console.error(`Failed to parse parts for message ${messageId}:`, e);
+            }
+        }
+
+        // 2. parts가 없고 linked_message_id가 있으면 링크된 메시지에서 조회 (재귀)
+        if (row.linked_message_id) {
+            // 무한 루프 방지를 위해 간단한 체크 (옵션)
+            if (row.linked_message_id === messageId) return undefined;
+            return getModelResponseParts(chatId, row.linked_message_id);
         }
     }
     return undefined;

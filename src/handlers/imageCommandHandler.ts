@@ -20,7 +20,11 @@ async function handleImageCommand(commandMsg: TelegramBot.Message, albumMessages
         const request: GenerateContentParameters = {
             model: config.imageModelName!,
             contents: contentPreparationResult.contents!,
-            config: {},
+            config: {
+                tools: [
+                    {googleSearch: {}}
+                ],
+            },
         };
         const result: GenerationOutput = await generateFromHistory(request, config.googleApiKey!);
 

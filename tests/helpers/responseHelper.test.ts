@@ -64,12 +64,14 @@ describe('responseHelper', () => {
             parts: [{text: 'Hello world'}],
             text: 'Hello world'
         };
-        mockSendLongMessage.mockResolvedValue({
+        const msg1 = {
             message_id: 555,
             chat: {id: 999},
             from: {id: BOT_ID},
             date: 1234567890
-        });
+        } as TelegramBot.Message;
+
+        mockSendLongMessage.mockResolvedValue([msg1]);
 
         await handleGeminiResponse(bot, mockMessage, result, BOT_ID, REPLY_TO_ID);
 
@@ -84,12 +86,14 @@ describe('responseHelper', () => {
             parts: [{text: 'Image caption'}],
             text: 'Image caption'
         };
-        mockSendLongMessage.mockResolvedValue({
+        const msg1 = {
             message_id: 555,
             chat: {id: 999},
             from: {id: BOT_ID},
             date: 1234567890
-        });
+        } as TelegramBot.Message;
+
+        mockSendLongMessage.mockResolvedValue([msg1]);
 
         await handleGeminiResponse(bot, mockMessage, result, BOT_ID, REPLY_TO_ID, 'image');
 
@@ -105,8 +109,19 @@ describe('responseHelper', () => {
         // 원본 파일 전송 (sendDocument)
         expect(bot.sendDocument).toHaveBeenCalled();
 
-        // logMessage 호출: sendLongMessage 결과 + sendDocument
+        // logMessage 호출: 
+        // 1. Main message (from sendLongMessage) with parts
+        // 2. Document message (linked to main message)
         expect(mockLogMessage).toHaveBeenCalledTimes(2);
+
+        // Check first call (Main message)
+        expect(mockLogMessage).toHaveBeenNthCalledWith(1, msg1, BOT_ID, 'image', {parts: result.parts});
+
+        // Check second call (Document message) - should be linked
+        // We need to capture the document message returned by mock
+        // bot.sendDocument returns a promise resolving to a message
+        // In beforeEach, it resolves to mockSentMessage (id 111)
+        expect(mockLogMessage).toHaveBeenNthCalledWith(2, expect.objectContaining({message_id: 111}), BOT_ID, 'image', {linkedMessageId: 555});
     });
 
     it('should handle image response (multiple images)', async () => {
@@ -118,12 +133,17 @@ describe('responseHelper', () => {
             parts: [{text: 'Album caption'}],
             text: 'Album caption'
         };
-        mockSendLongMessage.mockResolvedValue({
-            message_id: 555,
-            chat: {id: 999},
-            from: {id: BOT_ID},
-            date: 1234567890
-        });
+
+        const msg1 = {message_id: 555, chat: {id: 999}} as TelegramBot.Message;
+        const msg2 = {message_id: 556, chat: {id: 999}} as TelegramBot.Message;
+
+        // sendLongMessage returns multiple messages (e.g. media group)
+        mockSendLongMessage.mockResolvedValue([msg1, msg2]);
+
+        // Mock sendMediaGroup to return document messages
+        const docMsg1 = {message_id: 601, chat: {id: 999}} as TelegramBot.Message;
+        const docMsg2 = {message_id: 602, chat: {id: 999}} as TelegramBot.Message;
+        (bot.sendMediaGroup as jest.Mock).mockResolvedValue([docMsg1, docMsg2]);
 
         await handleGeminiResponse(bot, mockMessage, result, BOT_ID, REPLY_TO_ID, 'image');
 
@@ -138,9 +158,18 @@ describe('responseHelper', () => {
 
         // 원본 파일 전송 (sendMediaGroup for documents)
         expect(bot.sendMediaGroup).toHaveBeenCalledTimes(1);
-        const docArgs = (bot.sendMediaGroup as jest.Mock).mock.calls[0];
-        expect(docArgs[1]).toHaveLength(2);
-        expect(docArgs[1][0].type).toBe('document');
+
+        // logMessage calls:
+        // 1. msg1 (Main) -> parts
+        // 2. msg2 (Secondary photo) -> linked to msg1
+        // 3. docMsg1 (Document) -> linked to msg1
+        // 4. docMsg2 (Document) -> linked to msg1
+        expect(mockLogMessage).toHaveBeenCalledTimes(4);
+
+        expect(mockLogMessage).toHaveBeenNthCalledWith(1, msg1, BOT_ID, 'image', {parts: result.parts});
+        expect(mockLogMessage).toHaveBeenNthCalledWith(2, msg2, BOT_ID, 'image', {linkedMessageId: 555});
+        expect(mockLogMessage).toHaveBeenNthCalledWith(3, docMsg1, BOT_ID, 'image', {linkedMessageId: 555});
+        expect(mockLogMessage).toHaveBeenNthCalledWith(4, docMsg2, BOT_ID, 'image', {linkedMessageId: 555});
     });
 
     it('should handle empty response', async () => {

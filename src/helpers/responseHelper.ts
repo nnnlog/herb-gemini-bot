@@ -97,20 +97,31 @@ export async function handleGeminiResponse(
             }))
             : undefined;
 
-        const lastTextMsg = await sendLongMessage(bot, chatId, textToSend, replyToId, images);
-        logMessage(lastTextMsg, BOT_ID, logType, {parts: result.parts});
+        const sentMessages = await sendLongMessage(bot, chatId, textToSend, replyToId, images);
+
+        // 첫 번째 메시지(메인)에만 parts 저장
+        const mainMsg = sentMessages[0];
+        if (mainMsg) {
+            logMessage(mainMsg, BOT_ID, logType, {parts: result.parts});
+
+            // 나머지 메시지들은 첫 번째 메시지에 링크
+            for (let i = 1; i < sentMessages.length; i++) {
+                logMessage(sentMessages[i], BOT_ID, logType, {linkedMessageId: mainMsg.message_id});
+            }
+        }
 
         // 4. 원본 파일 전송 (이미지가 있는 경우)
-        if (hasImages) {
+        if (hasImages && mainMsg) {
             if (result.images!.length === 1) {
                 // 단일 이미지: sendDocument
                 const docMsg = await bot.sendDocument(chatId, result.images![0].buffer, {
-                    reply_to_message_id: lastTextMsg.message_id
+                    reply_to_message_id: mainMsg.message_id
                 }, {
                     filename: 'image.png',
                     contentType: result.images![0].mimeType || 'image/png'
                 });
-                logMessage(docMsg, BOT_ID, logType, {parts: result.parts});
+                // 원본 파일 메시지도 메인 메시지에 링크
+                logMessage(docMsg, BOT_ID, logType, {linkedMessageId: mainMsg.message_id});
             } else {
                 // 다중 이미지: sendMediaGroup
                 const docMedia = result.images!.map((img, index) => ({
@@ -122,10 +133,11 @@ export async function handleGeminiResponse(
                     mime_type: img.mimeType || 'image/png'
                 }));
                 const docMsgs = await bot.sendMediaGroup(chatId, docMedia as any, {
-                    reply_to_message_id: lastTextMsg.message_id
+                    reply_to_message_id: mainMsg.message_id
                 });
                 for (const docMsg of docMsgs) {
-                    logMessage(docMsg, BOT_ID, logType, {parts: result.parts});
+                    // 원본 파일 메시지들도 메인 메시지에 링크
+                    logMessage(docMsg, BOT_ID, logType, {linkedMessageId: mainMsg.message_id});
                 }
             }
             console.log(`성공: 사용자(ID: ${commandMsg.from?.id})에게 ${result.images!.length}개의 콘텐츠 전송 완료.`);
