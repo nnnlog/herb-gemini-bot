@@ -2,6 +2,7 @@ import {Content, Part} from "@google/genai";
 import TelegramBot from "node-telegram-bot-api";
 import {Readable} from "stream";
 import {ConversationTurn} from "../services/db.js";
+import {parseCommandParameters} from "./parameterHelper.js";
 
 // --- 타입 정의 ---
 // Telegram에서 받은 파일 정보를 Attachment 타입으로 정규화하기 위한 인터페이스
@@ -77,8 +78,9 @@ export async function getFileBuffer(bot: TelegramBot, fileId: string): Promise<B
     return buffer;
 }
 
-export async function buildContents(bot: TelegramBot, conversationHistory: ConversationTurn[], commandMsg: TelegramBot.Message, albumMessages: TelegramBot.Message[], commandName: string): Promise<BuildContentsResult> {
+export async function buildContents(bot: TelegramBot, conversationHistory: ConversationTurn[], commandMsg: TelegramBot.Message, albumMessages: TelegramBot.Message[], commandName: string, aliases: string[] = []): Promise<BuildContentsResult> {
     let totalSize = 0;
+    const commandAliases = aliases.length > 0 ? aliases : [commandName];
 
     const contents: Content[] = await Promise.all(
         conversationHistory.map(async (turn) => {
@@ -99,8 +101,18 @@ export async function buildContents(bot: TelegramBot, conversationHistory: Conve
             turn.files.forEach(file => totalSize += file.file_size || 0);
             const fileParts = await createFileParts(bot, turn.files);
             const parts: Part[] = [...fileParts];
-            const commandRegex = new RegExp(`^/${commandName}(?:@\\w+bot)?\\s*`);
-            const cleanText = turn.text.replace(commandRegex, '').trim();
+
+            const commandRegex = new RegExp(`^/(?:${commandAliases.join('|')})(?:@\\w+bot)?\\s*`);
+            let cleanText = turn.text.replace(commandRegex, '').trim();
+
+            if (commandName === 'image') {
+                const {cleanedText: textWithoutParams} = parseCommandParameters(cleanText, {
+                    allowedValues: ['1k', '2k', '4k'],
+                    caseSensitive: false
+                });
+                cleanText = textWithoutParams;
+            }
+
             if (cleanText) {
                 parts.push({text: cleanText});
             }

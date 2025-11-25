@@ -14,17 +14,18 @@ export async function prepareContentForModel(
     bot: TelegramBot,
     commandMsg: TelegramBot.Message,
     albumMessages: TelegramBot.Message[],
-    commandType: 'image' | 'gemini' | 'summarize' | 'map'
+    commandType: 'image' | 'gemini' | 'summarize' | 'map',
+    aliases: string[] = []
 ): Promise<ContentPreparationResult> {
     const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100 MiB
     const conversationHistory = await getConversationHistory(commandMsg.chat.id, commandMsg);
-    let {contents, totalSize} = await buildContents(bot, conversationHistory, commandMsg, albumMessages, commandType);
+    let {contents, totalSize} = await buildContents(bot, conversationHistory, commandMsg, albumMessages, commandType, aliases);
 
     if (totalSize > MAX_FILE_SIZE) {
         return {error: {message: `총 파일 용량이 100MB를 초과할 수 없습니다. (현재: ${Math.round(totalSize / 1024 / 1024)}MB)`}};
     }
 
-    contents = contents.filter((turn, index) => (turn.parts && turn.parts.length > 0) || index === contents.length - 1);
+    contents = contents.filter((turn) => turn.parts && turn.parts.length > 0);
 
     if (contents.length === 0) {
         return {error: {message: "프롬프트로 삼을 유효한 메시지가 없습니다."}};
