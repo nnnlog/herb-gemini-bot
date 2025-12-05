@@ -5,12 +5,14 @@ import {handleCommandError, prepareContentForModel} from "../helpers/commandHelp
 import {handleGeminiResponse} from '../helpers/responseHelper.js';
 import {generateFromHistory, GenerationOutput} from '../services/aiHandler.js';
 import {logMessage} from '../services/db.js';
+import {Session} from '../services/session.js';
 import {ParsedCommand} from "../types.js";
 
 async function handleImageCommand(commandMsg: TelegramBot.Message, albumMessages: TelegramBot.Message[] = [], bot: TelegramBot, BOT_ID: number, config: Config, replyToId: number, parsedCommand?: ParsedCommand) {
     const chatId = commandMsg.chat.id;
     try {
-        const contentPreparationResult = await prepareContentForModel(bot, commandMsg, albumMessages, 'image', ['image', 'img']);
+        const session = await Session.create(chatId, commandMsg);
+        const contentPreparationResult = await prepareContentForModel(bot, commandMsg, albumMessages, 'image', session, ['image', 'img']);
 
         if (contentPreparationResult.error) {
             const sentMsg = await bot.sendMessage(chatId, contentPreparationResult.error.message, {reply_to_message_id: replyToId});

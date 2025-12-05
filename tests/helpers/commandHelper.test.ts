@@ -47,11 +47,16 @@ describe('Command Helper', () => {
                 totalSize: 0
             });
 
+            const mockSession = {
+                getHistory: jest.fn().mockResolvedValue([])
+            } as any;
+
             const result = await commandHelper.prepareContentForModel(
                 mockBot,
                 commandMsg,
                 [],
                 'image',
+                mockSession,
                 ['image', 'img']
             );
 
@@ -73,11 +78,16 @@ describe('Command Helper', () => {
                 totalSize: 0
             });
 
+            const mockSession = {
+                getHistory: jest.fn().mockResolvedValue([])
+            } as any;
+
             const result = await commandHelper.prepareContentForModel(
                 mockBot,
                 commandMsg,
                 [],
                 'image',
+                mockSession,
                 ['image', 'img']
             );
 

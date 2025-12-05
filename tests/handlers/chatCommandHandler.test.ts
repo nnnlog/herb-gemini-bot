@@ -27,6 +27,14 @@ jest.unstable_mockModule('../../src/services/db.js', () => ({
     logMessage: mockLogMessage
 }));
 
+jest.unstable_mockModule('../../src/services/session.js', () => ({
+    Session: {
+        create: jest.fn().mockResolvedValue({
+            history: []
+        })
+    }
+}));
+
 // Import module under test AFTER mocking
 const {handleChatCommand} = await import('../../src/handlers/chatCommandHandler.js');
 

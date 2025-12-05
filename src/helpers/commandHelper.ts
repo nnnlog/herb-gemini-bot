@@ -1,6 +1,7 @@
 import {Content} from '@google/genai';
 import TelegramBot from 'node-telegram-bot-api';
-import {getConversationHistory, logMessage} from '../services/db.js';
+import {logMessage} from '../services/db.js';
+import {Session} from '../services/session.js';
 import {buildContents} from './utils.js';
 
 interface ContentPreparationResult {
@@ -15,10 +16,11 @@ export async function prepareContentForModel(
     commandMsg: TelegramBot.Message,
     albumMessages: TelegramBot.Message[],
     commandType: 'image' | 'gemini' | 'summarize' | 'map',
+    session: Session,
     aliases: string[] = []
 ): Promise<ContentPreparationResult> {
     const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100 MiB
-    const conversationHistory = await getConversationHistory(commandMsg.chat.id, commandMsg);
+    const conversationHistory = session.history;
     let {contents, totalSize} = await buildContents(bot, conversationHistory, commandMsg, albumMessages, commandType, aliases);
 
     if (totalSize > MAX_FILE_SIZE) {

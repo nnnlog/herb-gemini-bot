@@ -27,6 +27,14 @@ jest.unstable_mockModule('../../src/services/db.js', () => ({
     logMessage: mockLogMessage
 }));
 
+jest.unstable_mockModule('../../src/services/session.js', () => ({
+    Session: {
+        create: jest.fn().mockResolvedValue({
+            history: []
+        })
+    }
+}));
+
 // Import module under test AFTER mocking
 const {handleMapCommand} = await import('../../src/handlers/mapCommandHandler.js');
 
