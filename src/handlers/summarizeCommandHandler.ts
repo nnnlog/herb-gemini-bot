@@ -92,7 +92,9 @@ GeekNews 스타일은 단순한 요약이 아닙니다. **독자가 원문을 �
     - **가계 부채:** 변동금리 대출 비중이 높은 차주들의 이자 상환 부담이 크게 증가하여 소비 위축 요인으로 작용할 가능성
 ---`;
 
-async function handleSummarizeCommand(commandMsg: TelegramBot.Message, albumMessages: TelegramBot.Message[] = [], bot: TelegramBot, BOT_ID: number, config: Config, replyToId: number) {
+import {ParsedCommand} from "../types.js";
+
+async function handleSummarizeCommand(commandMsg: TelegramBot.Message, albumMessages: TelegramBot.Message[] = [], bot: TelegramBot, BOT_ID: number, config: Config, replyToId: number, parsedCommand?: ParsedCommand) {
     const chatId = commandMsg.chat.id;
     try {
         const contentPreparationResult = await prepareContentForModel(bot, commandMsg, albumMessages, 'summarize');

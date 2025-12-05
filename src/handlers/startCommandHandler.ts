@@ -1,12 +1,18 @@
 import TelegramBot from 'node-telegram-bot-api';
-import {logMessage} from '../services/db.js';
 import {commands} from '../commands.js';
+import {Config} from '../config.js';
+import {logMessage} from '../services/db.js';
+
+import {ParsedCommand} from "../types.js";
 
 export async function handleStartCommand(
     msg: TelegramBot.Message,
     albumMessages: TelegramBot.Message[],
     bot: TelegramBot,
-    BOT_ID: number
+    BOT_ID: number,
+    config: Config,
+    originalMessageId: number,
+    parsedCommand?: ParsedCommand
 ): Promise<void> {
     const commandList = commands
         .filter(cmd => cmd.type !== 'start') // start 명령어는 제외

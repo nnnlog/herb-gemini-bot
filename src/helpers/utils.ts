@@ -1,8 +1,9 @@
 import {Content, Part} from "@google/genai";
 import TelegramBot from "node-telegram-bot-api";
 import {Readable} from "stream";
+import {commandMap} from "../commands.js";
 import {ConversationTurn} from "../services/db.js";
-import {parseCommandParameters} from "./parameterHelper.js";
+import {parseCommandArguments} from "./commandParser.js";
 
 // --- 타입 정의 ---
 // Telegram에서 받은 파일 정보를 Attachment 타입으로 정규화하기 위한 인터페이스
@@ -105,11 +106,9 @@ export async function buildContents(bot: TelegramBot, conversationHistory: Conve
             const commandRegex = new RegExp(`^/(?:${commandAliases.join('|')})(?:@\\w+bot)?\\s*`);
             let cleanText = turn.text.replace(commandRegex, '').trim();
 
-            if (commandName === 'image') {
-                const {cleanedText: textWithoutParams} = parseCommandParameters(cleanText, {
-                    allowedValues: ['1k', '2k', '4k'],
-                    caseSensitive: false
-                });
+            const command = commandMap.get(commandName);
+            if (command) {
+                const {cleanedText: textWithoutParams} = parseCommandArguments(cleanText, command);
                 cleanText = textWithoutParams;
             }
 

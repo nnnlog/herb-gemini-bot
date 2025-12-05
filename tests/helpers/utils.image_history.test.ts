@@ -1,7 +1,17 @@
 import {describe, expect, it, jest} from '@jest/globals';
 import TelegramBot from 'node-telegram-bot-api';
-import {buildContents} from '../../src/helpers/utils';
 import {ConversationTurn} from '../../src/services/db';
+
+// Mock sqlite3 to prevent DB connection side effects
+jest.unstable_mockModule('sqlite3', () => ({
+    default: {
+        Database: jest.fn(() => ({})),
+        verbose: jest.fn().mockReturnThis()
+    }
+}));
+
+// Dynamic import for modules that might trigger DB connection
+const {buildContents} = await import('../../src/helpers/utils');
 
 // Mock TelegramBot
 const mockBot = {

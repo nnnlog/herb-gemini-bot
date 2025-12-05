@@ -16,10 +16,29 @@ jest.unstable_mockModule('../../src/services/db.js', () => ({
     getConversationHistory: mockGetConversationHistory,
 }));
 
-// 3. Mock node-fetch, which is a dependency of the module under test
+// 3. Mock node-fetch
 const mockFetch = jest.fn();
 jest.unstable_mockModule('node-fetch', () => ({
     default: mockFetch,
+}));
+
+// 4. Mock commands.js to avoid loading handlers and their dependencies (like db.js)
+const mockCommandMap = new Map();
+mockCommandMap.set('image', {
+    type: 'image',
+    parameters: [
+        {
+            name: 'resolution',
+            type: 'string',
+            allowedValues: ['1k', '2k', '4k'],
+            defaultValue: '1k'
+        }
+    ]
+});
+mockCommandMap.set('gemini', {type: 'chat'});
+
+jest.unstable_mockModule('../../src/commands.js', () => ({
+    commandMap: mockCommandMap,
 }));
 
 

@@ -6,7 +6,9 @@ import {handleGeminiResponse} from '../helpers/responseHelper.js';
 import {generateFromHistory, GenerationOutput} from '../services/aiHandler.js';
 import {logMessage} from '../services/db.js';
 
-async function handleMapCommand(commandMsg: TelegramBot.Message, albumMessages: TelegramBot.Message[] = [], bot: TelegramBot, BOT_ID: number, config: Config, replyToId: number) {
+import {ParsedCommand} from "../types.js";
+
+async function handleMapCommand(commandMsg: TelegramBot.Message, albumMessages: TelegramBot.Message[] = [], bot: TelegramBot, BOT_ID: number, config: Config, replyToId: number, parsedCommand?: ParsedCommand) {
     const chatId = commandMsg.chat.id;
     try {
         const contentPreparationResult = await prepareContentForModel(bot, commandMsg, albumMessages, 'map');

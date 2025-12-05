@@ -1,4 +1,4 @@
-import {jest, describe, it, expect, beforeEach} from '@jest/globals';
+import {beforeEach, describe, expect, it, jest} from '@jest/globals';
 import type TelegramBot from 'node-telegram-bot-api';
 import type {Config} from '../../src/config.js';
 
@@ -105,13 +105,13 @@ describe('Command Router', () => {
     it('should call image command handler for /image command', async () => {
         const msg = createMockMessage(1, '/image a cat');
         await commandRouter.routeCommand(msg, [], mockBot, BOT_ID, mockConfig, BOT_USERNAME);
-        expect(mockHandleImageCommand).toHaveBeenCalledWith(msg, [], mockBot, BOT_ID, mockConfig, msg.message_id);
+        expect(mockHandleImageCommand).toHaveBeenCalledWith(msg, [], mockBot, BOT_ID, mockConfig, msg.message_id, expect.anything());
     });
 
     it('should call chat command handler for /gemini@mybot command', async () => {
         const msg = createMockMessage(1, '/gemini@mybot a dog');
         await commandRouter.routeCommand(msg, [], mockBot, BOT_ID, mockConfig, BOT_USERNAME);
-        expect(mockHandleChatCommand).toHaveBeenCalledWith(msg, [], mockBot, BOT_ID, mockConfig, msg.message_id);
+        expect(mockHandleChatCommand).toHaveBeenCalledWith(msg, [], mockBot, BOT_ID, mockConfig, msg.message_id, expect.anything());
     });
 
     it('should NOT call chat command handler for /gemini@anotherbot command', async () => {
@@ -123,7 +123,7 @@ describe('Command Router', () => {
     it('should call image command handler for /img alias', async () => {
         const msg = createMockMessage(1, '/img a cat');
         await commandRouter.routeCommand(msg, [], mockBot, BOT_ID, mockConfig, BOT_USERNAME);
-        expect(mockHandleImageCommand).toHaveBeenCalledWith(msg, [], mockBot, BOT_ID, mockConfig, msg.message_id);
+        expect(mockHandleImageCommand).toHaveBeenCalledWith(msg, [], mockBot, BOT_ID, mockConfig, msg.message_id, expect.anything());
     });
 
     it('should not call chat command handler for invalid command like ...alias', async () => {
@@ -136,7 +136,7 @@ describe('Command Router', () => {
         const originalMsg = createMockMessage(1, 'This is a photo prompt');
         const commandMsg = createMockMessage(2, '/gemini', originalMsg);
         await commandRouter.routeCommand(commandMsg, [], mockBot, BOT_ID, mockConfig, BOT_USERNAME);
-        expect(mockHandleChatCommand).toHaveBeenCalledWith(originalMsg, [], mockBot, BOT_ID, mockConfig, commandMsg.message_id);
+        expect(mockHandleChatCommand).toHaveBeenCalledWith(originalMsg, [], mockBot, BOT_ID, mockConfig, commandMsg.message_id, expect.anything());
     });
 
     it('should send error message if no prompt is provided', async () => {
@@ -165,13 +165,13 @@ describe('Command Router', () => {
         const userReply = createMockMessage(2, 'Tell me more', botMsg);
         mockGetMessageMetadata.mockResolvedValue({command_type: 'chat'} as any);
         await commandRouter.routeCommand(userReply, [], mockBot, BOT_ID, mockConfig, BOT_USERNAME);
-        expect(mockHandleChatCommand).toHaveBeenCalledWith(userReply, [], mockBot, BOT_ID, mockConfig, userReply.message_id);
+        expect(mockHandleChatCommand).toHaveBeenCalledWith(userReply, [], mockBot, BOT_ID, mockConfig, userReply.message_id, expect.anything());
     });
 
     it('should call map command handler for /map command', async () => {
         const msg = createMockMessage(1, '/map show me restaurants near me');
         await commandRouter.routeCommand(msg, [], mockBot, BOT_ID, mockConfig, BOT_USERNAME);
-        expect(mockHandleMapCommand).toHaveBeenCalledWith(msg, [], mockBot, BOT_ID, mockConfig, msg.message_id);
+        expect(mockHandleMapCommand).toHaveBeenCalledWith(msg, [], mockBot, BOT_ID, mockConfig, msg.message_id, expect.anything());
     });
 
     it('should continue map conversation by calling the map handler', async () => {
@@ -182,7 +182,7 @@ describe('Command Router', () => {
         const userReply = createMockMessage(2, 'How about cafes?', botMsg);
         mockGetMessageMetadata.mockResolvedValue({command_type: 'map'} as any);
         await commandRouter.routeCommand(userReply, [], mockBot, BOT_ID, mockConfig, BOT_USERNAME);
-        expect(mockHandleMapCommand).toHaveBeenCalledWith(userReply, [], mockBot, BOT_ID, mockConfig, userReply.message_id);
+        expect(mockHandleMapCommand).toHaveBeenCalledWith(userReply, [], mockBot, BOT_ID, mockConfig, userReply.message_id, expect.anything());
     });
 
     it('should use forwarded message as prompt source when replying with command only', async () => {
@@ -192,18 +192,18 @@ describe('Command Router', () => {
         };
         const commandMsg = createMockMessage(2, '/gemini', forwardedMsg);
         await commandRouter.routeCommand(commandMsg, [], mockBot, BOT_ID, mockConfig, BOT_USERNAME);
-        expect(mockHandleChatCommand).toHaveBeenCalledWith(forwardedMsg, [], mockBot, BOT_ID, mockConfig, commandMsg.message_id);
+        expect(mockHandleChatCommand).toHaveBeenCalledWith(forwardedMsg, [], mockBot, BOT_ID, mockConfig, commandMsg.message_id, expect.anything());
     });
 
     it('should call start command handler for /start command', async () => {
         const msg = createMockMessage(1, '/start');
         await commandRouter.routeCommand(msg, [], mockBot, BOT_ID, mockConfig, BOT_USERNAME);
-        expect(mockHandleStartCommand).toHaveBeenCalledWith(msg, [], mockBot, BOT_ID, mockConfig, msg.message_id);
+        expect(mockHandleStartCommand).toHaveBeenCalledWith(msg, [], mockBot, BOT_ID, mockConfig, msg.message_id, expect.anything());
     });
 
     it('should call help command handler for /help command even with args', async () => {
         const msg = createMockMessage(1, '/help some random arguments');
         await commandRouter.routeCommand(msg, [], mockBot, BOT_ID, mockConfig, BOT_USERNAME);
-        expect(mockHandleHelpCommand).toHaveBeenCalledWith(msg, [], mockBot, BOT_ID, mockConfig, msg.message_id);
+        expect(mockHandleHelpCommand).toHaveBeenCalledWith(msg, [], mockBot, BOT_ID, mockConfig, msg.message_id, expect.anything());
     });
 });

@@ -2,12 +2,12 @@ import {GenerateContentParameters} from '@google/genai';
 import TelegramBot from "node-telegram-bot-api";
 import {Config} from '../config.js';
 import {handleCommandError, prepareContentForModel} from "../helpers/commandHelper.js";
-import {parseCommandParameters} from "../helpers/parameterHelper.js";
 import {handleGeminiResponse} from '../helpers/responseHelper.js';
 import {generateFromHistory, GenerationOutput} from '../services/aiHandler.js';
 import {logMessage} from '../services/db.js';
+import {ParsedCommand} from "../types.js";
 
-async function handleImageCommand(commandMsg: TelegramBot.Message, albumMessages: TelegramBot.Message[] = [], bot: TelegramBot, BOT_ID: number, config: Config, replyToId: number) {
+async function handleImageCommand(commandMsg: TelegramBot.Message, albumMessages: TelegramBot.Message[] = [], bot: TelegramBot, BOT_ID: number, config: Config, replyToId: number, parsedCommand?: ParsedCommand) {
     const chatId = commandMsg.chat.id;
     try {
         const contentPreparationResult = await prepareContentForModel(bot, commandMsg, albumMessages, 'image', ['image', 'img']);
@@ -18,12 +18,7 @@ async function handleImageCommand(commandMsg: TelegramBot.Message, albumMessages
             return;
         }
 
-        // 해상도 파라미터 파싱
-        const {parameters} = parseCommandParameters(commandMsg.text || '', {
-            allowedValues: ['1k', '2k', '4k'],
-            caseSensitive: false
-        });
-        const resolution = parameters[0] || '1k';
+        const resolution = parsedCommand?.args?.resolution || '1k';
 
         const request: GenerateContentParameters = {
             model: config.imageModelName!,

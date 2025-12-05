@@ -1,10 +1,10 @@
-import {Command} from './types.js';
-import {handleImageCommand} from './handlers/imageCommandHandler.js';
 import {handleChatCommand} from './handlers/chatCommandHandler.js';
-import {handleSummarizeCommand} from './handlers/summarizeCommandHandler.js';
-import {handleStartCommand} from './handlers/startCommandHandler.js';
 import {handleHelpCommand} from './handlers/helpCommandHandler.js';
+import {handleImageCommand} from './handlers/imageCommandHandler.js';
 import {handleMapCommand} from "./handlers/mapCommandHandler.js";
+import {handleStartCommand} from './handlers/startCommandHandler.js';
+import {handleSummarizeCommand} from './handlers/summarizeCommandHandler.js';
+import {Command} from './types.js';
 
 export const commands: Command[] = [
     {
@@ -28,7 +28,16 @@ export const commands: Command[] = [
         handler: handleImageCommand,
         description: 'Gemini 3.0 Pro Image 모델로 이미지를 생성합니다.',
         aliases: ['image', 'img'],
-        showInList: true
+        showInList: true,
+        parameters: [
+            {
+                name: 'resolution',
+                type: 'string',
+                allowedValues: ['1k', '2k', '4k'],
+                defaultValue: '1k',
+                description: '이미지 해상도 (기본값: 1k)'
+            }
+        ]
     },
     {
         type: 'chat',

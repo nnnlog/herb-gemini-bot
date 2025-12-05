@@ -1,4 +1,3 @@
-import TelegramBot from 'node-telegram-bot-api';
 import {CommandHandler} from '../types.js';
 
 const helpMessage = `*Gemini 텔레그램 봇 도움말*
@@ -24,7 +23,8 @@ export const handleHelpCommand: CommandHandler = async (
     bot,
     BOT_ID,
     config,
-    originalMessageId
+    originalMessageId,
+    parsedCommand
 ) => {
     await bot.sendMessage(msg.chat.id, helpMessage, {parse_mode: 'Markdown'});
 };
