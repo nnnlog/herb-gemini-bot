@@ -215,4 +215,30 @@ describe('AI Handler Service - generateFromHistory', () => {
         expect(result.error).toBeUndefined();
         expect(result.text).toBe('Response cut off due to max tokens');
     });
+
+    it('시나리오 3.11: request.config.httpOptions.timeout 설정 시, abortSignal이 자동으로 추가되어야 합니다.', async () => {
+        mockGenerateContent.mockResolvedValue({
+            text: 'Timeout test',
+            candidates: [{content: {parts: [{text: 'Timeout test'}]}}],
+            promptFeedback: undefined
+        });
+
+        const request = {
+            model: 'gemini-pro',
+            contents: [],
+            config: {
+                httpOptions: {
+                    timeout: 5000 // 5 seconds
+                }
+            }
+        };
+
+        await generateFromHistory(request, 'fake-api-key');
+
+        expect(mockGenerateContent).toHaveBeenCalledTimes(1);
+        const calledRequest = mockGenerateContent.mock.calls[0][0];
+        // Expect abortSignal to be present in config
+        expect(calledRequest.config.abortSignal).toBeDefined();
+        expect(calledRequest.config.abortSignal).toBeInstanceOf(AbortSignal);
+    });
 });

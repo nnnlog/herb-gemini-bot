@@ -1,8 +1,8 @@
 import TelegramBot from 'node-telegram-bot-api';
-import {config} from './config.js';
-import {initDb} from './services/db.js';
-import {processMessage} from './handlers/mediaGroupHandler.js';
 import {commands} from './commands.js';
+import {config} from './config.js';
+import {processMessage} from './handlers/mediaGroupHandler.js';
+import {initDb} from './services/db.js';
 
 initDb();
 

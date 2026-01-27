@@ -19,6 +19,10 @@ export async function generateFromHistory(request: GenerateContentParameters, go
         try {
             console.log(`'${request.model}' 모델로 콘텐츠 생성 시도 (${attempt}/${MAX_RETRIES})...`);
 
+            if (request.config?.httpOptions?.timeout && !request.config.abortSignal) {
+                request.config.abortSignal = AbortSignal.timeout(request.config.httpOptions.timeout);
+            }
+
             const result = await genAI.models.generateContent(request);
 
             // 1. 프롬프트 자체가 안전 필터에 의해 차단되었는지 먼저 확인
