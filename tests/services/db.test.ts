@@ -66,8 +66,8 @@ describe('DB Service', () => {
         it('시나리오 A.1: 기본 텍스트 메시지를 raw_messages 테이블에 저장해야 합니다.', async () => {
             const msg = createMockMessage(1, 'Hello', {id: 123, is_bot: false});
             await logMessage(msg, 999);
-            // initDb calls run 8 times (5 tables + 2 indexes + 1 alter table), logMessage calls it once
-            expect(mockDb.run).toHaveBeenCalledTimes(9);
+            // initDb calls run 10 times (7 tables + 2 indexes + 1 alter table), logMessage calls it once
+            expect(mockDb.run).toHaveBeenCalledTimes(11);
         });
 
         it('시나리오 A.2: 메타데이터(parts)가 있는 경우 model_response_metadata 테이블에 저장해야 합니다.', async () => {
@@ -75,9 +75,9 @@ describe('DB Service', () => {
             const parts = [{text: 'thought'}, {inlineData: {mimeType: 'image/png', data: '...'}}];
             await logMessage(msg, 999, 'image', {parts});
 
-            // initDb(8) + raw(1) + attachments(0) + message_metadata(1) + model_response_metadata(1) = 11
-            expect(mockDb.run).toHaveBeenCalledTimes(11);
-            const lastCall = (mockDb.run as jest.Mock).mock.calls[10] as any[];
+            // initDb(10) + raw(1) + attachments(0) + message_metadata(1) + model_response_metadata(1) = 13
+            expect(mockDb.run).toHaveBeenCalledTimes(13);
+            const lastCall = (mockDb.run as jest.Mock).mock.calls[12] as any[];
             expect(lastCall[0]).toContain('INSERT OR REPLACE INTO model_response_metadata');
             expect(lastCall[1][2]).toBe(JSON.stringify(parts));
         });
@@ -85,9 +85,9 @@ describe('DB Service', () => {
             const msg = createMockMessage(3, 'Linked Message', {id: 999, is_bot: true});
             await logMessage(msg, 999, 'chat', {linkedMessageId: 100});
 
-            // initDb(8) + raw(1) + attachments(0) + message_metadata(1) + model_response_metadata(1) = 11
-            expect(mockDb.run).toHaveBeenCalledTimes(11);
-            const lastCall = (mockDb.run as jest.Mock).mock.calls[10] as any[];
+            // initDb(10) + raw(1) + attachments(0) + message_metadata(1) + model_response_metadata(1) = 13
+            expect(mockDb.run).toHaveBeenCalledTimes(13);
+            const lastCall = (mockDb.run as jest.Mock).mock.calls[12] as any[];
             expect(lastCall[0]).toContain('INSERT OR REPLACE INTO model_response_metadata');
             // params: [chat_id, message_id, parts, linked_message_id]
             expect(lastCall[1][3]).toBe(100);

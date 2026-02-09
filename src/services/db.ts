@@ -2,38 +2,14 @@ import {Part} from "@google/genai";
 import TelegramBot from "node-telegram-bot-api";
 import sqlite3 from 'sqlite3';
 
-const db = new sqlite3.Database('./telegram_log.db', (err) => {
-    if (err) console.error("데이터베이스 연결 실패:", err.message);
-    else console.log("로컬 SQLite 데이터베이스에 성공적으로 연결되었습니다.");
-});
+export let db: sqlite3.Database;
 
-// 데이터베이스 스키마 및 대화 기록을 위한 인터페이스
-interface MessageMetadata {
-    chat_id: number;
-    message_id: number;
-    command_type: string | null;
-}
-
-interface Attachment {
-    file_unique_id: string;
-    file_id: string;
-    type: string;
-    file_name?: string;
-    file_size?: number;
-    mime_type?: string;
-    width?: number;
-    height?: number;
-}
-
-export interface ConversationTurn {
-    role: 'user' | 'model';
-    text: string;
-    files: Attachment[];
-    parts?: Part[];
-}
-
-// DB 초기화 함수
 export function initDb() {
+    db = new sqlite3.Database('./telegram_log.db', (err) => {
+        if (err) console.error("데이터베이스 연결 실패:", err.message);
+        else console.log("로컬 SQLite 데이터베이스에 성공적으로 연결되었습니다.");
+    });
+
     const createRawMessagesTable = `
     CREATE TABLE IF NOT EXISTS raw_messages (
         message_id INTEGER NOT NULL,
@@ -85,12 +61,30 @@ export function initDb() {
         PRIMARY KEY (chat_id, message_id)
     )`;
 
+    const createUsersTable = `CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY, 
+            username TEXT, 
+            first_name TEXT, 
+            last_name TEXT, 
+            is_allowed INTEGER DEFAULT 0
+        )`;
+
+    const createConversationTurnsTable = `CREATE TABLE IF NOT EXISTS conversation_turns (
+            message_id INTEGER PRIMARY KEY,
+            chat_id INTEGER,
+            role TEXT, 
+            parts TEXT, 
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+        )`;
+
     db.serialize(() => {
         db.run(createRawMessagesTable);
         db.run(createAttachmentsTable);
         db.run(createMessageAttachmentsTable);
         db.run(createMessageMetadataTable);
         db.run(createModelResponseMetadataTable);
+        db.run(createUsersTable);
+        db.run(createConversationTurnsTable);
 
         // 인덱스 생성
         db.run("CREATE INDEX IF NOT EXISTS idx_raw_messages_timestamp ON raw_messages(chat_id, timestamp)");
@@ -103,33 +97,57 @@ export function initDb() {
     });
 }
 
+// 데이터베이스 스키마 및 대화 기록을 위한 인터페이스
+interface MessageMetadata {
+    chat_id: number;
+    message_id: number;
+    command_type: string | null;
+}
+
+interface Attachment {
+    file_unique_id: string;
+    file_id: string;
+    type: string;
+    file_name?: string;
+    file_size?: number;
+    mime_type?: string;
+    width?: number;
+    height?: number;
+}
+
+export interface ConversationTurn {
+    role: 'user' | 'model';
+    text: string;
+    files: Attachment[];
+    parts?: Part[];
+}
+
+// 마이그레이션: linked_message_id 컬럼 추가 (기존 테이블이 있는 경우)
+
+
 // 메시지 로깅 메인 함수
 export async function logMessage(msg: TelegramBot.Message, botId: number, commandType: string | null = null, metadata?: {parts?: Part[], linkedMessageId?: number}) {
-    // 1. 원본 메시지 저장
-    const rawSql = `INSERT OR REPLACE INTO raw_messages (message_id, chat_id, user_id, timestamp, data) VALUES (?, ?, ?, ?, ?)`;
+    const rawSql = `INSERT OR REPLACE INTO raw_messages(message_id, chat_id, user_id, timestamp, data) VALUES(?, ?, ?, ?, ?)`;
     await dbRun(rawSql, [msg.message_id, msg.chat.id, msg.from?.id ?? null, msg.date, JSON.stringify(msg)]);
 
-    // 2. 첨부파일 정보 저장
     const files = getFilesFromMsg(msg);
     for (const file of files) {
-        const attachSql = `INSERT OR IGNORE INTO attachments (file_unique_id, file_id, type, file_name, file_size, mime_type, width, height) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`;
+        const attachSql = `INSERT OR IGNORE INTO attachments(file_unique_id, file_id, type, file_name, file_size, mime_type, width, height) VALUES(?, ?, ?, ?, ?, ?, ?, ?)`;
         await dbRun(attachSql, [
             file.file_unique_id, file.file_id, file.type, file.file_name ?? null,
             file.file_size ?? null, file.mime_type ?? null, file.width ?? null, file.height ?? null
         ]);
-        const linkSql = `INSERT OR IGNORE INTO message_attachments (chat_id, message_id, file_unique_id) VALUES (?, ?, ?)`;
+        const linkSql = `INSERT OR IGNORE INTO message_attachments(chat_id, message_id, file_unique_id) VALUES(?, ?, ?)`;
         await dbRun(linkSql, [msg.chat.id, msg.message_id, file.file_unique_id]);
     }
 
-    // 3. 프로그램 메타데이터 저장
     if (commandType) {
-        const metaSql = `INSERT OR REPLACE INTO message_metadata (chat_id, message_id, command_type) VALUES (?, ?, ?)`;
+        const metaSql = `INSERT OR REPLACE INTO message_metadata(chat_id, message_id, command_type) VALUES(?, ?, ?)`;
         await dbRun(metaSql, [msg.chat.id, msg.message_id, commandType]);
     }
 
-    // 4. 모델 응답 메타데이터(parts, linked_message_id) 저장
     if (metadata && (metadata.parts || metadata.linkedMessageId)) {
-        const modelMetaSql = `INSERT OR REPLACE INTO model_response_metadata (chat_id, message_id, parts, linked_message_id) VALUES (?, ?, ?, ?)`;
+        const modelMetaSql = `INSERT OR REPLACE INTO model_response_metadata(chat_id, message_id, parts, linked_message_id) VALUES(?, ?, ?, ?)`;
         await dbRun(modelMetaSql, [
             msg.chat.id,
             msg.message_id,
@@ -138,7 +156,6 @@ export async function logMessage(msg: TelegramBot.Message, botId: number, comman
         ]);
     }
 
-    // 5. 답장 메시지가 DB에 없는 경우 재귀적으로 저장
     if (msg.reply_to_message) {
         const originalMsg = msg.reply_to_message;
         const existingMsg = await getMessage(originalMsg.chat.id, originalMsg.message_id);
@@ -154,13 +171,13 @@ export async function logMessage(msg: TelegramBot.Message, botId: number, comman
 export async function getMessage(chatId: number, messageId: number): Promise<TelegramBot.Message | null> {
     const row = await dbGet<{
         data: string
-    }>(`SELECT data FROM raw_messages WHERE chat_id = ? AND message_id = ?`, [chatId, messageId]);
+    }>(`SELECT data FROM raw_messages WHERE chat_id = ? AND message_id = ? `, [chatId, messageId]);
     return row ? JSON.parse(row.data) : null;
 }
 
 // 특정 메시지의 메타데이터 가져오기
 export async function getMessageMetadata(chatId: number, messageId: number): Promise<MessageMetadata | null> {
-    return dbGet<MessageMetadata>(`SELECT * FROM message_metadata WHERE chat_id = ? AND message_id = ?`, [chatId, messageId]);
+    return dbGet<MessageMetadata>(`SELECT * FROM message_metadata WHERE chat_id = ? AND message_id = ? `, [chatId, messageId]);
 }
 
 // 앨범 ID로 그룹 전체 메시지 가져오기
@@ -186,7 +203,7 @@ async function getAttachmentsForMessage(chatId: number, messageId: number): Prom
 
 // 특정 메시지의 모델 응답 메타데이터(parts) 가져오기
 async function getModelResponseParts(chatId: number, messageId: number): Promise<Part[] | undefined> {
-    const sql = `SELECT parts, linked_message_id FROM model_response_metadata WHERE chat_id = ? AND message_id = ?`;
+    const sql = `SELECT parts, linked_message_id FROM model_response_metadata WHERE chat_id = ? AND message_id = ? `;
     const row = await dbGet<{parts: string, linked_message_id: number | null}>(sql, [chatId, messageId]);
 
     if (row) {
@@ -195,7 +212,7 @@ async function getModelResponseParts(chatId: number, messageId: number): Promise
             try {
                 return JSON.parse(row.parts);
             } catch (e) {
-                console.error(`Failed to parse parts for message ${messageId}:`, e);
+                console.error(`Failed to parse parts for message ${messageId}: `, e);
             }
         }
 

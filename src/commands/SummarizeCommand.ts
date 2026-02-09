@@ -1,13 +1,15 @@
 import {GenerateContentParameters} from '@google/genai';
-import TelegramBot from "node-telegram-bot-api";
-import {Config} from '../config.js';
-import {handleCommandError, prepareContentForModel} from "../helpers/commandHelper.js";
-import {handleGeminiResponse} from '../helpers/responseHelper.js';
-import {generateFromHistory, GenerationOutput} from '../services/aiHandler.js';
 import {logMessage} from '../services/db.js';
-import {Session} from '../services/session.js';
+import {CommandContext} from './BaseCommand.js';
+import {GenAICommand} from './GenAICommand.js';
 
-const summarizePrompt = `# 역할 (Role)
+export class SummarizeCommand extends GenAICommand {
+    public readonly name = 'summarize';
+    public readonly aliases = ['summarize'];
+    public readonly description = '링크나 긴 텍스트(파일)를 요약합니다.';
+    public readonly showInList = true;
+
+    public readonly summarizePrompt = `# 역할 (Role)
 당신은 모든 분야를 아우르는 **고밀도 정보 분석가**입니다. 당신의 임무는 사용자가 제공한 웹페이지(뉴스, 블로그, 보고서 등)의 내용을 분석하여, 바쁜 전문가들이 빠르게 전체 내용을 파악할 수 있는 **'GeekNews(Hada.io)' 스타일의 고밀도 정보 리포트**를 작성하는 것입니다.
 
 # 필수 작업 절차 (MUST FOLLOW PROCEDURE)
@@ -93,50 +95,54 @@ GeekNews 스타일은 단순한 요약이 아닙니다. **독자가 원문을 �
     - **가계 부채:** 변동금리 대출 비중이 높은 차주들의 이자 상환 부담이 크게 증가하여 소비 위축 요인으로 작용할 가능성
 ---`;
 
-import {ParsedCommand} from "../types.js";
+    public async execute(ctx: CommandContext): Promise<void> {
+        const {bot, config, msg} = ctx;
+        const replyToId = msg.message_id;
 
-async function handleSummarizeCommand(commandMsg: TelegramBot.Message, albumMessages: TelegramBot.Message[] = [], bot: TelegramBot, BOT_ID: number, config: Config, replyToId: number, parsedCommand?: ParsedCommand) {
-    const chatId = commandMsg.chat.id;
-    try {
-        const session = await Session.create(chatId, commandMsg);
-        const contentPreparationResult = await prepareContentForModel(bot, commandMsg, albumMessages, 'summarize', session);
+        // 반응 추가 (처리 중)
+        await bot.setMessageReaction(msg.chat.id, replyToId, {reaction: [{type: 'emoji', emoji: '👍'}]});
 
-        if (contentPreparationResult.error) {
-            const sentMsg = await bot.sendMessage(chatId, contentPreparationResult.error.message, {reply_to_message_id: replyToId});
-            logMessage(sentMsg, BOT_ID, 'error');
-            return;
-        }
-
-        const request: GenerateContentParameters = {
-            model: config.geminiProModel!,
-            contents: contentPreparationResult.contents!,
-            config: {
-                systemInstruction: summarizePrompt,
-                tools: [
-                    {googleSearch: {}},
-                    {codeExecution: {}},
-                    {urlContext: {}},
-                ],
-                thinkingConfig: {
-                    thinkingBudget: 32768,
-                },
-                httpOptions: {
-                    timeout: 1000 * 60 * 10,
-                },
-                temperature: 0,
+        try {
+            const {contents, error} = await this.buildPrompt(ctx);
+            if (error) {
+                await this.reply(ctx, error);
+                return;
             }
-        };
 
-        const result: GenerationOutput = await generateFromHistory(request, config.googleApiKey!);
+            const request: GenerateContentParameters = {
+                model: config.geminiProModel,
+                contents: contents,
+                config: {
+                    tools: [
+                        {googleSearch: {}},
+                        {urlContext: {}},
+                        {codeExecution: {}}
+                    ],
+                    thinkingConfig: {thinkingBudget: 32768},
+                    systemInstruction: this.summarizePrompt,
+                    httpOptions: {
+                        timeout: 1000 * 60 * 10,
+                    },
+                    temperature: 0
+                }
+            };
 
-        await handleGeminiResponse(bot, commandMsg, result, BOT_ID, replyToId, 'summarize');
+            const result = await this.callAI(request, config.googleApiKey);
 
-    } catch (error: unknown) {
-        await handleCommandError(error, bot, chatId, replyToId, BOT_ID, 'summarize');
-    } finally {
-        bot.setMessageReaction(commandMsg.chat.id, replyToId, {reaction: []});
+            if (result.error) {
+                await this.reply(ctx, result.error);
+                return;
+            }
+
+            const sentMessages = await this.reply(ctx, this.formatResponse(result), undefined, result.images);
+            if (sentMessages.length > 0) {
+                await logMessage(sentMessages[0], ctx.botId, 'summarize', {parts: result.parts});
+            }
+
+        } catch (error) {
+            await this.handleError(ctx, error);
+        } finally {
+            bot.setMessageReaction(msg.chat.id, replyToId, {reaction: []});
+        }
     }
 }
-
-export {handleSummarizeCommand};
-

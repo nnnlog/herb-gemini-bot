@@ -3,21 +3,21 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 export interface Config {
-    telegramToken: string | undefined;
-    googleApiKey: string | undefined;
-    imageModelName: string | undefined;
-    geminiProModel: string | undefined;
+    telegramToken: string;
+    googleApiKey: string;
+    imageModelName: string;
+    geminiProModel: string;
     allowedChannelIds: string[];
     trustedUserIds: string[];
 }
 
 export const config: Config = {
-    telegramToken: process.env.TELEGRAM_BOT_TOKEN,
-    googleApiKey: process.env.GOOGLE_API_KEY,
-    imageModelName: process.env.IMAGE_MODEL_NAME,
-    geminiProModel: process.env.GEMINI_PRO_MODEL,
-    allowedChannelIds: process.env.ALLOWED_CHANNEL_IDS?.split(',') || [],
-    trustedUserIds: process.env.TRUSTED_USER_IDS?.split(',') || [],
+    telegramToken: process.env.TELEGRAM_BOT_TOKEN as string,
+    googleApiKey: process.env.GOOGLE_API_KEY as string,
+    imageModelName: process.env.IMAGE_MODEL_NAME as string,
+    geminiProModel: process.env.GEMINI_PRO_MODEL as string,
+    allowedChannelIds: (process.env.ALLOWED_CHANNEL_IDS as string).split(','),
+    trustedUserIds: (process.env.TRUSTED_USER_IDS as string).split(','),
 };
 
 if (!config.telegramToken || !config.googleApiKey) {
