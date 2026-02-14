@@ -83,7 +83,7 @@ export class CommandDispatcher implements CommandRegistry {
             if (originalMsgMeta?.command_type) {
                 const type = originalMsgMeta.command_type;
                 const LEGACY_COMMAND_MAPPING: {[key: string]: string} = {
-                    'chat': 'gemini',
+                    'summarize': 'gemini',
                 };
                 let targetCommandName = LEGACY_COMMAND_MAPPING[type] || type;
 

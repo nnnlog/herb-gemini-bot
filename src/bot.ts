@@ -8,12 +8,14 @@ import {SummarizeCommand} from './commands/SummarizeCommand.js';
 import {config} from './config.js';
 import {CommandDispatcher} from './managers/CommandDispatcher.js';
 import {sessionManager} from './managers/SessionManager.js';
-import {initDb} from './services/db.js';
+import {initDb, logMessage} from './services/db.js';
 
 initDb();
 
 const bot = new TelegramBot(config.telegramToken, {
-    polling: true,
+    polling: {
+        autoStart: false
+    },
     request: {
         agentOptions: {
             family: 4
@@ -40,6 +42,49 @@ const mediaGroupTimers = new Map<string, NodeJS.Timeout>();
 
     dispatcher.setBotUsername(BOT_USERNAME || '');
     dispatcher.setBotId(BOT_ID);
+
+    const methodsToLog = [
+        'sendMessage',
+        'sendPhoto',
+        'sendAudio',
+        'sendDocument',
+        'sendSticker',
+        'sendVideo',
+        'sendVoice',
+        'sendVideoNote',
+        'sendMediaGroup',
+        'sendLocation',
+        'sendVenue',
+        'sendContact',
+        'sendPoll',
+        'sendDice',
+        'editMessageText',
+        'editMessageCaption',
+        'editMessageMedia'
+    ];
+
+    for (const method of methodsToLog) {
+        const originalMethod = (bot as any)[method];
+        if (typeof originalMethod === 'function') {
+            (bot as any)[method] = async (...args: any[]) => {
+                const result = await originalMethod.apply(bot, args);
+                try {
+                    if (result) {
+                        if (Array.isArray(result)) {
+                            for (const msg of result) {
+                                await logMessage(msg, BOT_ID);
+                            }
+                        } else if (typeof result === 'object' && 'message_id' in result) {
+                            await logMessage(result as TelegramBot.Message, BOT_ID);
+                        }
+                    }
+                } catch (e) {
+                    console.error(`Failed to log sent message (${method}):`, e);
+                }
+                return result;
+            };
+        }
+    }
 
     console.log(`Bot started as @${BOT_USERNAME}`);
 
@@ -98,5 +143,6 @@ const mediaGroupTimers = new Map<string, NodeJS.Timeout>();
         await dispatcher.dispatch(msg);
     });
 
-    console.log("System initialized.");
+    await bot.startPolling();
+    console.log("System initialized and polling started.");
 })();

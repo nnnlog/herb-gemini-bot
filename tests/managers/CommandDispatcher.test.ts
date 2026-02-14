@@ -6,23 +6,23 @@ import {CommandDispatcher} from '../../src/managers/CommandDispatcher.js'; // No
 
 // --- Mocks ---
 // We use unstable_mockModule for ESM support as per existing tests
-const mockIsUserAuthorized = jest.fn();
+const mockIsUserAuthorized = jest.fn<any>();
 jest.unstable_mockModule('../../src/services/auth.js', () => ({
     isUserAuthorized: mockIsUserAuthorized,
 }));
 
-const mockLogMessage = jest.fn();
-const mockGetMessageMetadata = jest.fn();
+const mockLogMessage = jest.fn<any>();
+const mockGetMessageMetadata = jest.fn<any>();
 jest.unstable_mockModule('../../src/services/db.js', () => ({
     logMessage: mockLogMessage,
     getMessageMetadata: mockGetMessageMetadata,
-    getConversationHistory: jest.fn().mockResolvedValue([])
+    getConversationHistory: jest.fn<any>().mockResolvedValue([])
 }));
 
 // Mock SessionManager
 const mockSessionManager = {
-    getSessionContext: jest.fn(),
-    createSession: jest.fn()
+    getSessionContext: jest.fn<any>(),
+    createSession: jest.fn<any>()
 };
 jest.unstable_mockModule('../../src/managers/SessionManager.js', () => ({
     SessionManager: jest.fn(() => mockSessionManager)
@@ -30,9 +30,9 @@ jest.unstable_mockModule('../../src/managers/SessionManager.js', () => ({
 
 // Mock Bot
 const mockBot = {
-    sendMessage: jest.fn().mockResolvedValue({message_id: 123}),
-    getMe: jest.fn().mockResolvedValue({id: 123, username: 'TestBot'}),
-    setMessageReaction: jest.fn()
+    sendMessage: jest.fn<any>().mockResolvedValue({message_id: 123}),
+    getMe: jest.fn<any>().mockResolvedValue({id: 123, username: 'TestBot'}),
+    setMessageReaction: jest.fn<any>()
 } as unknown as TelegramBot;
 
 // Mock Command
@@ -40,7 +40,8 @@ class MockCommand extends BaseCommand {
     public name = 'mock';
     public aliases = ['m'];
     public description = 'Mock command';
-    public execute = jest.fn();
+    public showInList = true;
+    public execute = jest.fn<any>().mockResolvedValue(undefined);
 }
 
 // Import code under test using dynamic import after mocks
@@ -137,6 +138,62 @@ describe('CommandDispatcher', () => {
         await dispatcher.dispatch(replyMsg);
 
         expect(mockCommand.execute).toHaveBeenCalledWith(expect.objectContaining({
+            isImplicit: true
+        }));
+    });
+
+    it('should route summarize replies to gemini command', async () => {
+        // Setup metadata to return 'summarize'
+        mockGetMessageMetadata.mockResolvedValue({command_type: 'summarize'});
+        
+        // Register a mock gemini command
+        const mockGemini = new MockCommand();
+        mockGemini.name = 'gemini';
+        dispatcher.register(mockGemini);
+
+        const replyMsg = {
+            message_id: 3,
+            chat: {id: 1},
+            from: {id: 1},
+            text: 'follow up question',
+            reply_to_message: {
+                message_id: 2,
+                from: {id: 123456}
+            }
+        } as TelegramBot.Message;
+
+        await dispatcher.dispatch(replyMsg);
+
+        expect(mockGemini.execute).toHaveBeenCalledWith(expect.objectContaining({
+            commandName: 'gemini',
+            isImplicit: true
+        }));
+    });
+
+    it('should route map replies to map command', async () => {
+        // Setup metadata to return 'map'
+        mockGetMessageMetadata.mockResolvedValue({command_type: 'map'});
+        
+        // Register a mock map command
+        const mockMap = new MockCommand();
+        mockMap.name = 'map';
+        dispatcher.register(mockMap);
+
+        const replyMsg = {
+            message_id: 4,
+            chat: {id: 1},
+            from: {id: 1},
+            text: 'where is this?',
+            reply_to_message: {
+                message_id: 3,
+                from: {id: 123456}
+            }
+        } as TelegramBot.Message;
+
+        await dispatcher.dispatch(replyMsg);
+
+        expect(mockMap.execute).toHaveBeenCalledWith(expect.objectContaining({
+            commandName: 'map',
             isImplicit: true
         }));
     });

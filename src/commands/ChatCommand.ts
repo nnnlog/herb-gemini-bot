@@ -61,7 +61,7 @@ export class ChatCommand extends GenAICommand {
             // 모델 응답을 DB에 기록
             if (sentMessages.length > 0) {
                 for (const m of sentMessages) {
-                    await logMessage(m, ctx.botId, 'response', {parts: result.parts});
+                    await logMessage(m, ctx.botId, 'gemini', {parts: result.parts});
                 }
             }
 
