@@ -65,5 +65,38 @@ describe('ImageCommand', () => {
         await command.execute(mockContext);
         expect(mockCallAI).toHaveBeenCalled();
     });
+
+    it('should log multiple messages correctly', async () => {
+        const messages = [
+            {message_id: 201, chat: {id: 123}},
+            {message_id: 202, chat: {id: 123}}
+        ];
+        (command as any).reply.mockResolvedValue(messages);
+
+        const aiResult = {
+            text: 'Here is your image',
+            images: [{buffer: Buffer.from('img'), mimeType: 'image/png'}],
+            parts: [{text: 'Here is your image'}]
+        };
+        mockCallAI.mockResolvedValue(aiResult);
+
+        await command.execute(mockContext);
+
+        expect(mockLogMessage).toHaveBeenCalledTimes(2);
+        
+        expect(mockLogMessage).toHaveBeenNthCalledWith(1, 
+            messages[0], 
+            999, 
+            'image', 
+            {parts: aiResult.parts}
+        );
+
+        expect(mockLogMessage).toHaveBeenNthCalledWith(2, 
+            messages[1], 
+            999, 
+            'image', 
+            {linkedMessageId: 201}
+        );
+    });
 });
 

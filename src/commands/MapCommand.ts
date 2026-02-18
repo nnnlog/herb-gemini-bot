@@ -48,7 +48,12 @@ export class MapCommand extends GenAICommand {
 
             const sentMessages = await this.reply(ctx, this.formatResponse(result), undefined, result.images);
             if (sentMessages.length > 0) {
-                await logMessage(sentMessages[0], ctx.botId, 'map', {parts: result.parts});
+                const firstMsg = sentMessages[0];
+                await logMessage(firstMsg, ctx.botId, 'map', {parts: result.parts});
+
+                for (let i = 1; i < sentMessages.length; i++) {
+                    await logMessage(sentMessages[i], ctx.botId, 'map', {linkedMessageId: firstMsg.message_id});
+                }
             }
 
         } catch (error) {

@@ -292,7 +292,7 @@ export abstract class GenAICommand extends BaseCommand {
 
             } catch (error: any) {
                 const msg = error.message || '';
-                if ((msg.includes('503') || msg.includes('500')) && attempt < GenAICommand.MAX_RETRIES) {
+                if ((msg.includes('503') || msg.includes('500') || msg.includes('fetch failed')) && attempt < GenAICommand.MAX_RETRIES) {
                     await delay(attempt * 1000 + 1000);
                     continue;
                 }

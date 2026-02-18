@@ -11,8 +11,8 @@ jest.unstable_mockModule('../../src/services/db.js', () => ({
     getMessage: jest.fn<any>().mockResolvedValue(null),
 }));
 
-describe('MapCommand', () => {
-    let MapCommand: any;
+describe('SummarizeCommand', () => {
+    let SummarizeCommand: any;
     let command: any;
     let mockBot: TelegramBot;
     let mockContext: CommandContext;
@@ -20,22 +20,26 @@ describe('MapCommand', () => {
     beforeEach(async () => {
         jest.clearAllMocks();
 
-        const module = await import('../../src/commands/MapCommand.js');
-        MapCommand = module.MapCommand;
+        const module = await import('../../src/commands/SummarizeCommand.js');
+        SummarizeCommand = module.SummarizeCommand;
 
-        mockCallAI.mockResolvedValue({text: 'Map data'});
+        mockCallAI.mockResolvedValue({
+            text: 'Summary', 
+            parts: [{text: 'Summary'}],
+            images: []
+        });
 
-        command = new MapCommand();
+        command = new SummarizeCommand();
         (command as any).callAI = mockCallAI;
-        (command as any).buildPrompt = jest.fn<any>().mockResolvedValue({contents: []});
-        (command as any).reply = jest.fn<any>().mockResolvedValue([]);
+        (command as any).buildPrompt = jest.fn<any>().mockResolvedValue({contents: [{parts: [{text: 'http://example.com'}]}]});
+        (command as any).reply = jest.fn<any>().mockResolvedValue([{message_id: 100}]);
         (command as any).handleError = jest.fn<any>();
 
         mockBot = {setMessageReaction: jest.fn<any>()} as unknown as TelegramBot;
         mockContext = {
             bot: mockBot,
             msg: {message_id: 1, chat: {id: 123}} as TelegramBot.Message,
-            commandName: 'map',
+            commandName: 'summarize',
             args: {},
             config: {googleApiKey: 'key', geminiProModel: 'model'} as any,
             botId: 999,
@@ -45,27 +49,25 @@ describe('MapCommand', () => {
         };
     });
 
-    it('should callAI with googleMaps tool', async () => {
+    it('should execute successfully and reply', async () => {
         await command.execute(mockContext);
-
-        expect(mockCallAI).toHaveBeenCalledWith(
-            expect.objectContaining({
-                config: expect.objectContaining({
-                    tools: expect.arrayContaining([expect.objectContaining({googleMaps: {}})])
-                })
-            }),
-            'key'
+        expect(mockCallAI).toHaveBeenCalled();
+        expect((command as any).reply).toHaveBeenCalledWith(
+            expect.anything(),
+            'Summary',
+            undefined,
+            expect.anything()
         );
     });
 
     it('should log multiple messages correctly', async () => {
         const messages = [
-            {message_id: 301, chat: {id: 123}},
-            {message_id: 302, chat: {id: 123}}
+            {message_id: 401, chat: {id: 123}},
+            {message_id: 402, chat: {id: 123}}
         ];
         (command as any).reply.mockResolvedValue(messages);
         
-        const aiResult = {text: 'Map data', parts: [{text: 'Map data'}]};
+        const aiResult = {text: 'Summary', parts: [{text: 'Summary'}]};
         mockCallAI.mockResolvedValue(aiResult);
 
         await command.execute(mockContext);
@@ -75,16 +77,15 @@ describe('MapCommand', () => {
         expect(mockLogMessage).toHaveBeenNthCalledWith(1, 
             messages[0], 
             999, 
-            'map', 
+            'summarize', 
             {parts: aiResult.parts}
         );
 
         expect(mockLogMessage).toHaveBeenNthCalledWith(2, 
             messages[1], 
             999, 
-            'map', 
-            {linkedMessageId: 301}
+            'summarize', 
+            {linkedMessageId: 401}
         );
     });
 });
-

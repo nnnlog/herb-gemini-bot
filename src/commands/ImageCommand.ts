@@ -63,7 +63,12 @@ export class ImageCommand extends GenAICommand {
 
             // 로그
             if (sentMessages.length > 0) {
-                await logMessage(sentMessages[0], ctx.botId, 'image', {parts: result.parts});
+                const firstMsg = sentMessages[0];
+                await logMessage(firstMsg, ctx.botId, 'image', {parts: result.parts});
+
+                for (let i = 1; i < sentMessages.length; i++) {
+                    await logMessage(sentMessages[i], ctx.botId, 'image', {linkedMessageId: firstMsg.message_id});
+                }
             }
 
         } catch (error) {

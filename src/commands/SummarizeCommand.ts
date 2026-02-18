@@ -136,7 +136,12 @@ GeekNews 스타일은 단순한 요약이 아닙니다. **독자가 원문을 �
 
             const sentMessages = await this.reply(ctx, this.formatResponse(result), undefined, result.images);
             if (sentMessages.length > 0) {
-                await logMessage(sentMessages[0], ctx.botId, 'summarize', {parts: result.parts});
+                const firstMsg = sentMessages[0];
+                await logMessage(firstMsg, ctx.botId, 'summarize', {parts: result.parts});
+
+                for (let i = 1; i < sentMessages.length; i++) {
+                    await logMessage(sentMessages[i], ctx.botId, 'summarize', {linkedMessageId: firstMsg.message_id});
+                }
             }
 
         } catch (error) {

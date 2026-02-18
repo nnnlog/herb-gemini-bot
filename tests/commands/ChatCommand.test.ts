@@ -108,4 +108,45 @@ describe('ChatCommand', () => {
             reaction: []
         });
     });
+
+    it('should log multiple messages correctly', async () => {
+        // Mock reply to return multiple messages
+        const messages = [
+            {message_id: 101, chat: {id: 123}},
+            {message_id: 102, chat: {id: 123}},
+            {message_id: 103, chat: {id: 123}}
+        ];
+        (command as any).reply.mockResolvedValue(messages);
+        
+        // Mock AI result with parts
+        const aiResult = {text: 'AI Response', images: [] as any, parts: [{text: 'AI Response'}]};
+        mockCallAI.mockResolvedValue(aiResult);
+
+        await command.execute(mockContext);
+
+        // Verify logMessage calls
+        expect(mockLogMessage).toHaveBeenCalledTimes(3);
+        
+        // First message logged with parts
+        expect(mockLogMessage).toHaveBeenNthCalledWith(1, 
+            messages[0], 
+            999, 
+            'gemini', 
+            {parts: aiResult.parts}
+        );
+
+        // Subsequent messages logged with linkedMessageId
+        expect(mockLogMessage).toHaveBeenNthCalledWith(2, 
+            messages[1], 
+            999, 
+            'gemini', 
+            {linkedMessageId: 101}
+        );
+        expect(mockLogMessage).toHaveBeenNthCalledWith(3, 
+            messages[2], 
+            999, 
+            'gemini', 
+            {linkedMessageId: 101}
+        );
+    });
 });
