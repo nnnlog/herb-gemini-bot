@@ -2,6 +2,15 @@ import {jest} from '@jest/globals';
 import TelegramBot from 'node-telegram-bot-api';
 import {CommandContext} from '../../src/commands/BaseCommand.js';
 
+// CommandType enum 값 (실제 소스와 동기화)
+const CommandType = {
+    GEMINI: 'gemini',
+    IMAGE: 'image',
+    MAP: 'map',
+    SUMMARIZE: 'summarize',
+    ERROR: 'error'
+} as const;
+
 const mockCallAI = jest.fn<any>();
 const mockLogMessage = jest.fn();
 
@@ -9,6 +18,7 @@ jest.unstable_mockModule('../../src/services/db.js', () => ({
     logMessage: mockLogMessage,
     getConversationHistory: jest.fn<any>().mockResolvedValue([]),
     getMessage: jest.fn<any>().mockResolvedValue(null),
+    CommandType
 }));
 
 describe('MapCommand', () => {
@@ -33,7 +43,7 @@ describe('MapCommand', () => {
 
         mockBot = {setMessageReaction: jest.fn<any>()} as unknown as TelegramBot;
         mockContext = {
-            bot: mockBot,
+            sender: mockBot as any,
             msg: {message_id: 1, chat: {id: 123}} as TelegramBot.Message,
             commandName: 'map',
             args: {},
@@ -64,7 +74,7 @@ describe('MapCommand', () => {
             {message_id: 302, chat: {id: 123}}
         ];
         (command as any).reply.mockResolvedValue(messages);
-        
+
         const aiResult = {text: 'Map data', parts: [{text: 'Map data'}]};
         mockCallAI.mockResolvedValue(aiResult);
 
@@ -72,17 +82,17 @@ describe('MapCommand', () => {
 
         expect(mockLogMessage).toHaveBeenCalledTimes(2);
 
-        expect(mockLogMessage).toHaveBeenNthCalledWith(1, 
-            messages[0], 
-            999, 
-            'map', 
+        expect(mockLogMessage).toHaveBeenNthCalledWith(1,
+            messages[0],
+            999,
+            CommandType.MAP,
             {parts: aiResult.parts}
         );
 
-        expect(mockLogMessage).toHaveBeenNthCalledWith(2, 
-            messages[1], 
-            999, 
-            'map', 
+        expect(mockLogMessage).toHaveBeenNthCalledWith(2,
+            messages[1],
+            999,
+            CommandType.MAP,
             {linkedMessageId: 301}
         );
     });

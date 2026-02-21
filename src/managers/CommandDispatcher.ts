@@ -2,7 +2,8 @@ import TelegramBot from 'node-telegram-bot-api';
 import {BaseCommand, CommandContext} from '../commands/BaseCommand.js';
 import {Config} from '../config.js';
 import {isUserAuthorized} from '../services/auth.js';
-import {getMessageMetadata, logMessage} from '../services/db.js';
+import {CommandType, getMessageMetadata, logMessage} from '../services/db.js';
+import {MessageSender} from './MessageSender.js';
 import {SessionManager} from './SessionManager.js';
 
 import {CommandRegistry} from './CommandRegistry.js';
@@ -106,13 +107,15 @@ export class CommandDispatcher implements CommandRegistry {
             return;
         }
 
-        logMessage(msg, botId, command.name);
+        logMessage(msg, botId, command.name as CommandType);
 
         const session = await this.sessionManager.getSessionContext(msg.chat.id, msg);
 
+        const sender = new MessageSender(this.bot, botId);
+
         const ctx: CommandContext = {
             msg,
-            bot: this.bot,
+            sender,
             config: this.config,
             session,
             args,

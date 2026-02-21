@@ -2,6 +2,15 @@ import {jest} from '@jest/globals';
 import TelegramBot from 'node-telegram-bot-api';
 import {CommandContext} from '../../src/commands/BaseCommand.js';
 
+// CommandType enum 값 (실제 소스와 동기화)
+const CommandType = {
+    GEMINI: 'gemini',
+    IMAGE: 'image',
+    MAP: 'map',
+    SUMMARIZE: 'summarize',
+    ERROR: 'error'
+} as const;
+
 // Mocks
 const mockCallAI = jest.fn<any>();
 const mockLogMessage = jest.fn<any>();
@@ -10,6 +19,7 @@ jest.unstable_mockModule('../../src/services/db.js', () => ({
     logMessage: mockLogMessage,
     getConversationHistory: jest.fn<any>().mockResolvedValue([]),
     getMessage: jest.fn<any>().mockResolvedValue(null),
+    CommandType
 }));
 
 describe('ChatCommand', () => {
@@ -40,7 +50,7 @@ describe('ChatCommand', () => {
         } as unknown as TelegramBot;
 
         mockContext = {
-            bot: mockBot,
+            sender: mockBot as any,
             msg: {message_id: 1, chat: {id: 123}} as TelegramBot.Message,
             commandName: 'gemini',
             args: {},
@@ -117,7 +127,7 @@ describe('ChatCommand', () => {
             {message_id: 103, chat: {id: 123}}
         ];
         (command as any).reply.mockResolvedValue(messages);
-        
+
         // Mock AI result with parts
         const aiResult = {text: 'AI Response', images: [] as any, parts: [{text: 'AI Response'}]};
         mockCallAI.mockResolvedValue(aiResult);
@@ -126,26 +136,26 @@ describe('ChatCommand', () => {
 
         // Verify logMessage calls
         expect(mockLogMessage).toHaveBeenCalledTimes(3);
-        
+
         // First message logged with parts
-        expect(mockLogMessage).toHaveBeenNthCalledWith(1, 
-            messages[0], 
-            999, 
-            'gemini', 
+        expect(mockLogMessage).toHaveBeenNthCalledWith(1,
+            messages[0],
+            999,
+            CommandType.GEMINI,
             {parts: aiResult.parts}
         );
 
         // Subsequent messages logged with linkedMessageId
-        expect(mockLogMessage).toHaveBeenNthCalledWith(2, 
-            messages[1], 
-            999, 
-            'gemini', 
+        expect(mockLogMessage).toHaveBeenNthCalledWith(2,
+            messages[1],
+            999,
+            CommandType.GEMINI,
             {linkedMessageId: 101}
         );
-        expect(mockLogMessage).toHaveBeenNthCalledWith(3, 
-            messages[2], 
-            999, 
-            'gemini', 
+        expect(mockLogMessage).toHaveBeenNthCalledWith(3,
+            messages[2],
+            999,
+            CommandType.GEMINI,
             {linkedMessageId: 101}
         );
     });

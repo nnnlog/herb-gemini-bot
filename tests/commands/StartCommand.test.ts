@@ -36,7 +36,7 @@ describe('StartCommand', () => {
 
         mockBot = {} as unknown as TelegramBot;
         mockContext = {
-            bot: mockBot,
+            sender: mockBot as any,
             msg: {chat: {id: 123}} as TelegramBot.Message,
             commandName: 'start',
             args: {},

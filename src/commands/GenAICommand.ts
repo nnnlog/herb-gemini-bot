@@ -1,8 +1,8 @@
 import {Content, GenerateContentParameters, GoogleGenAI, GroundingMetadata, Part} from '@google/genai';
 import {marked} from 'marked';
 import TelegramBot from 'node-telegram-bot-api';
-import {getFileBuffer} from '../helpers/utils.js';
-import {logMessage} from '../services/db.js';
+import {MessageSender} from '../managers/MessageSender.js';
+import {CommandType, logMessage} from '../services/db.js';
 import {BaseCommand, CommandContext, ImageData} from './BaseCommand.js';
 
 function escapeHtml(text: string): string {
@@ -52,7 +52,7 @@ export abstract class GenAICommand extends BaseCommand {
      * - 봇 응답에 명령어만으로 답장하는 경우 거절
      */
     public override async validate(ctx: CommandContext): Promise<boolean> {
-        const {msg, bot, cleanedText, isImplicit, botId} = ctx;
+        const {msg, sender, cleanedText, isImplicit, botId} = ctx;
 
         // 암시적 명령(답장)은 항상 유효
         if (isImplicit) return true;
@@ -66,7 +66,7 @@ export abstract class GenAICommand extends BaseCommand {
 
         // 봇 응답에 명령어만으로 답장하는 경우 거절
         if (originalMsg?.from?.id === botId) {
-            await bot.sendMessage(msg.chat.id, "봇의 응답이나 다른 명령어에는 내용을 입력하여 답장해야 합니다.", {
+            await sender.sendMessage(msg.chat.id, "봇의 응답이나 다른 명령어에는 내용을 입력하여 답장해야 합니다.", {
                 reply_to_message_id: msg.message_id
             });
             return false;
@@ -76,7 +76,7 @@ export abstract class GenAICommand extends BaseCommand {
         if (originalMsg) return true;
 
         // 아무것도 없으면 거절
-        await bot.sendMessage(msg.chat.id, "명령어와 함께 프롬프트를 입력하거나, 내용이 있는 메시지에 답장하며 사용해주세요.", {
+        await sender.sendMessage(msg.chat.id, "명령어와 함께 프롬프트를 입력하거나, 내용이 있는 메시지에 답장하며 사용해주세요.", {
             reply_to_message_id: msg.message_id
         });
         return false;
@@ -141,7 +141,7 @@ export abstract class GenAICommand extends BaseCommand {
     }
 
     protected async buildPrompt(ctx: CommandContext, albumMessages: TelegramBot.Message[] = []): Promise<{contents: Content[], totalSize: number, error?: string}> {
-        const {session, bot, args} = ctx;
+        const {session, sender, args} = ctx;
         const history = session.history;
         const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100 MiB
         let totalSize = 0;
@@ -157,7 +157,7 @@ export abstract class GenAICommand extends BaseCommand {
                 }
 
                 turn.files.forEach(f => totalSize += f.file_size || 0);
-                const fileParts = await this.createFileParts(bot, turn.files);
+                const fileParts = await this.createFileParts(sender, turn.files);
                 const parts: Part[] = [...fileParts];
 
                 const aliases = [this.name, ...this.aliases];
@@ -203,7 +203,7 @@ export abstract class GenAICommand extends BaseCommand {
 
         if (currentFiles.length > 0) {
             currentFiles.forEach(f => totalSize += f.file_size || 0);
-            const fileParts = await this.createFileParts(bot, currentFiles);
+            const fileParts = await this.createFileParts(sender, currentFiles);
 
             if (contents.length > 0) {
                 const lastContent = contents[contents.length - 1];
@@ -227,10 +227,10 @@ export abstract class GenAICommand extends BaseCommand {
         return {contents: validContents, totalSize};
     }
 
-    protected async createFileParts(bot: TelegramBot, files: TelegramFile[]): Promise<Part[]> {
+    protected async createFileParts(sender: MessageSender, files: TelegramFile[]): Promise<Part[]> {
         if (!files || files.length === 0) return [];
         return Promise.all(files.map(async (file) => {
-            const buffer = await getFileBuffer(bot, file.file_id);
+            const buffer = await sender.getFileBuffer(file.file_id);
             const mimeType = this.getMimeType(file.file_name);
             return {inlineData: {data: buffer.toString('base64'), mimeType}};
         }));
@@ -323,7 +323,7 @@ export abstract class GenAICommand extends BaseCommand {
     protected async handleError(ctx: CommandContext, error: unknown) {
         console.error(`Error executing ${this.name}:`, error);
         const errText = error instanceof Error ? error.message : 'Unknown error';
-        await ctx.bot.sendMessage(ctx.msg.chat.id, "오류가 발생했습니다." + this.errorSuffix, {reply_to_message_id: ctx.msg.message_id});
-        logMessage(ctx.msg, ctx.botId, errText); // 오류 로그
+        await ctx.sender.sendMessage(ctx.msg.chat.id, "오류가 발생했습니다." + this.errorSuffix, {reply_to_message_id: ctx.msg.message_id});
+        logMessage(ctx.msg, ctx.botId, CommandType.ERROR); // 오류 로그
     }
 }

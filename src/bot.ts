@@ -8,7 +8,7 @@ import {SummarizeCommand} from './commands/SummarizeCommand.js';
 import {config} from './config.js';
 import {CommandDispatcher} from './managers/CommandDispatcher.js';
 import {sessionManager} from './managers/SessionManager.js';
-import {getMessage, initDb, logMessage} from './services/db.js';
+import {CommandType, getMessage, getMessageMetadata, initDb} from './services/db.js';
 
 initDb();
 
@@ -46,48 +46,6 @@ const mediaGroupTimers = new Map<string, NodeJS.Timeout>();
     dispatcher.setBotUsername(BOT_USERNAME || '');
     dispatcher.setBotId(BOT_ID);
 
-    const methodsToLog = [
-        'sendMessage',
-        'sendPhoto',
-        'sendAudio',
-        'sendDocument',
-        'sendSticker',
-        'sendVideo',
-        'sendVoice',
-        'sendVideoNote',
-        'sendMediaGroup',
-        'sendLocation',
-        'sendVenue',
-        'sendContact',
-        'sendPoll',
-        'sendDice',
-        'editMessageText',
-        'editMessageCaption',
-        'editMessageMedia'
-    ];
-
-    for (const method of methodsToLog) {
-        const originalMethod = (bot as any)[method];
-        if (typeof originalMethod === 'function') {
-            (bot as any)[method] = async (...args: any[]) => {
-                const result = await originalMethod.apply(bot, args);
-                try {
-                    if (result) {
-                        if (Array.isArray(result)) {
-                            for (const msg of result) {
-                                await logMessage(msg, BOT_ID);
-                            }
-                        } else if (typeof result === 'object' && 'message_id' in result) {
-                            await logMessage(result as TelegramBot.Message, BOT_ID);
-                        }
-                    }
-                } catch (e) {
-                    console.error(`Failed to log sent message (${method}):`, e);
-                }
-                return result;
-            };
-        }
-    }
 
     console.log(`Bot started as @${BOT_USERNAME}`);
 
@@ -147,11 +105,22 @@ const mediaGroupTimers = new Map<string, NodeJS.Timeout>();
     });
 
     // 사용자가 봇의 메시지에 반응(Reaction)을 달았을 때의 처리 (재시도 로직)
+    const activeRetries = new Set<string>();
+
     bot.on('message_reaction', async (reaction: any) => {
         if (!reaction.user || reaction.user.is_bot) return;
 
         // 새로운 반응이 추가되었는지 확인
         if (reaction.new_reaction && reaction.new_reaction.length > 0) {
+            const retryKey = `${reaction.chat.id}_${reaction.message_id}`;
+
+            if (activeRetries.has(retryKey)) {
+                console.log(`[Retry] 메시지(${retryKey})에 대한 재처리가 이미 진행 중입니다. 중복 요청을 무시합니다.`);
+                return;
+            }
+
+            activeRetries.add(retryKey);
+
             try {
                 // 대상 메시지(반응이 달린 메시지) 가져오기
                 const targetMsg = await getMessage(reaction.chat.id, reaction.message_id);
@@ -159,14 +128,22 @@ const mediaGroupTimers = new Map<string, NodeJS.Timeout>();
 
                 // 대상 메시지가 봇 본인의 메시지이며 원본 사용자 요청 메시지에 대한 답장이었는지 확인
                 if (targetMsg.from?.id === BOT_ID && targetMsg.reply_to_message) {
-                    const originalMsg = await getMessage(reaction.chat.id, targetMsg.reply_to_message.message_id);
-                    if (originalMsg) {
-                        console.log(`[Retry] 사용자가 봇의 메시지에 반응을 추가하여 원본 메시지(${originalMsg.message_id}) 재처리를 시도합니다.`);
-                        await dispatcher.dispatch(originalMsg);
+                    const meta = await getMessageMetadata(reaction.chat.id, reaction.message_id);
+
+                    if (meta?.command_type === CommandType.ERROR) {
+                        const originalMsg = await getMessage(reaction.chat.id, targetMsg.reply_to_message.message_id);
+                        if (originalMsg) {
+                            console.log(`[Retry] 사용자가 봇의 메시지에 반응을 추가하여 원본 메시지(${originalMsg.message_id}) 재처리를 시도합니다.`);
+                            await dispatcher.dispatch(originalMsg);
+                        }
+                    } else {
+                        console.log(`[Retry] 메시지(${targetMsg.message_id})는 에러 메시지가 아니므로 재시도하지 않습니다.`);
                     }
                 }
             } catch (error) {
                 console.error("Error handling message_reaction for retry:", error);
+            } finally {
+                activeRetries.delete(retryKey);
             }
         }
     });

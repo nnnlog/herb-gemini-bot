@@ -2,6 +2,15 @@ import {beforeEach, describe, expect, it, jest} from '@jest/globals';
 import type TelegramBot from 'node-telegram-bot-api';
 import type {CommandContext} from '../../src/commands/BaseCommand.js';
 
+// CommandType enum 값 (실제 소스와 동기화)
+const CommandType = {
+    GEMINI: 'gemini',
+    IMAGE: 'image',
+    MAP: 'map',
+    SUMMARIZE: 'summarize',
+    ERROR: 'error'
+} as const;
+
 // Mocks
 const mockLogMessage = jest.fn();
 const mockGetConversationHistory = jest.fn();
@@ -12,6 +21,7 @@ jest.unstable_mockModule('../../src/services/db.js', () => ({
     logMessage: mockLogMessage,
     getConversationHistory: mockGetConversationHistory,
     getMessage: jest.fn<any>().mockResolvedValue(null),
+    CommandType
 }));
 
 // Mock GenAI
@@ -69,7 +79,7 @@ describe('GenAICommand', () => {
         } as unknown as TelegramBot;
 
         mockContext = {
-            bot: mockBot,
+            sender: mockBot as any,
             msg: {
                 message_id: 1,
                 chat: {id: 123},

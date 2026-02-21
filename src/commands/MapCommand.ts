@@ -1,5 +1,5 @@
 import {GenerateContentParameters} from '@google/genai';
-import {logMessage} from '../services/db.js';
+import {CommandType, logMessage} from '../services/db.js';
 import {CommandContext} from './BaseCommand.js';
 import {GenAICommand} from './GenAICommand.js';
 
@@ -10,11 +10,11 @@ export class MapCommand extends GenAICommand {
     public readonly showInList = true;
 
     public async execute(ctx: CommandContext): Promise<void> {
-        const {bot, config, msg} = ctx;
+        const {sender, config, msg} = ctx;
         const replyToId = msg.message_id;
 
         // 반응 추가 (처리 중)
-        await bot.setMessageReaction(msg.chat.id, replyToId, {reaction: [{type: 'emoji', emoji: '👍'}]});
+        await sender.setMessageReaction(msg.chat.id, replyToId, {reaction: [{type: 'emoji', emoji: '👍'}]});
 
         try {
             const {contents, error} = await this.buildPrompt(ctx);
@@ -43,23 +43,24 @@ export class MapCommand extends GenAICommand {
 
             if (result.error) {
                 await this.reply(ctx, result.error);
+                logMessage(msg, ctx.botId, CommandType.ERROR);
                 return;
             }
 
             const sentMessages = await this.reply(ctx, this.formatResponse(result), undefined, result.images);
             if (sentMessages.length > 0) {
                 const firstMsg = sentMessages[0];
-                await logMessage(firstMsg, ctx.botId, 'map', {parts: result.parts});
+                await logMessage(firstMsg, ctx.botId, CommandType.MAP, {parts: result.parts});
 
                 for (let i = 1; i < sentMessages.length; i++) {
-                    await logMessage(sentMessages[i], ctx.botId, 'map', {linkedMessageId: firstMsg.message_id});
+                    await logMessage(sentMessages[i], ctx.botId, CommandType.MAP, {linkedMessageId: firstMsg.message_id});
                 }
             }
 
         } catch (error) {
             await this.handleError(ctx, error);
         } finally {
-            bot.setMessageReaction(msg.chat.id, replyToId, {reaction: []});
+            sender.setMessageReaction(msg.chat.id, replyToId, {reaction: []});
         }
     }
 }

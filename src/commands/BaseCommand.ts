@@ -1,10 +1,11 @@
 import TelegramBot from 'node-telegram-bot-api';
 import {Config} from '../config.js';
+import {MessageSender} from '../managers/MessageSender.js';
 import {Session} from '../managers/SessionManager.js';
 
 export interface CommandContext {
     msg: TelegramBot.Message;
-    bot: TelegramBot;
+    sender: MessageSender;
     config: Config;
     session: Session;
     args: Record<string, any>;
@@ -56,10 +57,9 @@ export abstract class BaseCommand {
 
     /**
      * 긴 메시지에 대한 분할 및 코드 블록 처리를 포함한 통합 전송 로직입니다.
-     * utils.ts -> sendLongMessage에서 리팩토링됨
      */
     protected async reply(ctx: CommandContext, text: string, options?: TelegramBot.SendMessageOptions, images?: ImageData[]): Promise<TelegramBot.Message[]> {
-        const {bot, msg} = ctx;
+        const {sender, msg} = ctx;
         const chatId = msg.chat.id;
         const replyToId = msg.message_id;
 
@@ -69,7 +69,7 @@ export abstract class BaseCommand {
 
         // 간단한 경우: 짧은 텍스트, 이미지 없음
         if (text.length <= MAX_LENGTH && (!images || images.length === 0)) {
-            const sentMsg = await bot.sendMessage(chatId, text, {
+            const sentMsg = await sender.sendMessage(chatId, text, {
                 reply_to_message_id: replyToId,
                 parse_mode: 'HTML',
                 ...options
@@ -120,7 +120,7 @@ export abstract class BaseCommand {
                     photoOptions.caption = firstChunk;
                     photoOptions.parse_mode = 'HTML';
                 }
-                firstMessage = await bot.sendPhoto(chatId, images[0].buffer, photoOptions);
+                firstMessage = await sender.sendPhoto(chatId, images[0].buffer, photoOptions);
                 sentMessages.push(firstMessage);
             } else {
                 const mediaGroup: TelegramBot.InputMediaPhoto[] = images.map((img, index) => ({
@@ -131,14 +131,14 @@ export abstract class BaseCommand {
                 }));
 
                 // sendMediaGroup은 일반적인 옵션을 쉽게 지원하지 않지만, 시도해 볼 수 있음
-                const msgs = await bot.sendMediaGroup(chatId, mediaGroup, {
+                const msgs = await sender.sendMediaGroup(chatId, mediaGroup, {
                     reply_to_message_id: replyToId
                 });
                 sentMessages.push(...msgs);
                 firstMessage = msgs[0];
             }
         } else {
-            firstMessage = await bot.sendMessage(chatId, firstChunk, {
+            firstMessage = await sender.sendMessage(chatId, firstChunk, {
                 reply_to_message_id: replyToId,
                 parse_mode: 'HTML',
                 ...options
@@ -151,7 +151,7 @@ export abstract class BaseCommand {
 
         for (let i = 1; i < chunks.length; i++) {
             const chunk = chunks[i];
-            const sentMsg = await bot.sendMessage(chatId, chunk, {
+            const sentMsg = await sender.sendMessage(chatId, chunk, {
                 reply_to_message_id: currentReplyToId,
                 parse_mode: 'HTML',
                 ...options
@@ -163,7 +163,7 @@ export abstract class BaseCommand {
         // 원본 파일 전송 (이미지가 있는 경우)
         if (images && images.length > 0) {
             if (images.length === 1) {
-                await bot.sendDocument(chatId, images[0].buffer, {
+                await sender.sendDocument(chatId, images[0].buffer, {
                     reply_to_message_id: firstMessage.message_id
                 }, {
                     filename: 'image.png',
@@ -176,7 +176,7 @@ export abstract class BaseCommand {
                     file_name: `image_${index + 1}.png`,
                     mime_type: img.mimeType || 'image/png'
                 }));
-                await bot.sendMediaGroup(chatId, docMedia as any, {
+                await sender.sendMediaGroup(chatId, docMedia as any, {
                     reply_to_message_id: firstMessage.message_id
                 });
             }

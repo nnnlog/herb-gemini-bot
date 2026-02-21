@@ -101,7 +101,7 @@ export function initDb() {
 interface MessageMetadata {
     chat_id: number;
     message_id: number;
-    command_type: string | null;
+    command_type: CommandType | null;
 }
 
 interface Attachment {
@@ -125,8 +125,16 @@ export interface ConversationTurn {
 // 마이그레이션: linked_message_id 컬럼 추가 (기존 테이블이 있는 경우)
 
 
+export enum CommandType {
+    GEMINI = 'gemini',
+    IMAGE = 'image',
+    MAP = 'map',
+    SUMMARIZE = 'summarize',
+    ERROR = 'error'
+}
+
 // 메시지 로깅 메인 함수
-export async function logMessage(msg: TelegramBot.Message, botId: number, commandType: string | null = null, metadata?: {parts?: Part[], linkedMessageId?: number}) {
+export async function logMessage(msg: TelegramBot.Message, botId: number, commandType: CommandType | null = null, metadata?: {parts?: Part[], linkedMessageId?: number}) {
     const rawSql = `INSERT OR REPLACE INTO raw_messages(message_id, chat_id, user_id, timestamp, data) VALUES(?, ?, ?, ?, ?)`;
     await dbRun(rawSql, [msg.message_id, msg.chat.id, msg.from?.id ?? null, msg.date, JSON.stringify(msg)]);
 
@@ -143,7 +151,7 @@ export async function logMessage(msg: TelegramBot.Message, botId: number, comman
 
     if (commandType) {
         const metaSql = `INSERT OR REPLACE INTO message_metadata(chat_id, message_id, command_type) VALUES(?, ?, ?)`;
-        await dbRun(metaSql, [msg.chat.id, msg.message_id, commandType]);
+        await dbRun(metaSql, [msg.chat.id, msg.message_id, commandType as string]);
     }
 
     if (metadata && (metadata.parts || metadata.linkedMessageId)) {
@@ -177,7 +185,23 @@ export async function getMessage(chatId: number, messageId: number): Promise<Tel
 
 // 특정 메시지의 메타데이터 가져오기
 export async function getMessageMetadata(chatId: number, messageId: number): Promise<MessageMetadata | null> {
-    return dbGet<MessageMetadata>(`SELECT * FROM message_metadata WHERE chat_id = ? AND message_id = ? `, [chatId, messageId]);
+    const row = await dbGet<{chat_id: number, message_id: number, command_type: string | null}>(`SELECT * FROM message_metadata WHERE chat_id = ? AND message_id = ? `, [chatId, messageId]);
+    if (!row) return null;
+
+    let parsedCommandType: CommandType | null = null;
+    if (row.command_type) {
+        if (row.command_type.startsWith('error:')) {
+            parsedCommandType = CommandType.ERROR;
+        } else {
+            parsedCommandType = row.command_type as CommandType;
+        }
+    }
+
+    return {
+        chat_id: row.chat_id,
+        message_id: row.message_id,
+        command_type: parsedCommandType
+    };
 }
 
 // 앨범 ID로 그룹 전체 메시지 가져오기
