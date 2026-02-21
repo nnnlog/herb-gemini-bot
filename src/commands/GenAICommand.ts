@@ -37,6 +37,8 @@ export abstract class GenAICommand extends BaseCommand {
         'go': 'text/x-go', 'rs': 'text/rust', 'html': 'text/html', 'css': 'text/css',
     };
 
+    protected readonly errorSuffix = '\n\n💡 봇의 에러 메시지에 반응(👍 등)을 추가하면 요청을 재시도합니다.';
+
     /**
      * 텍스트에서 명령어 인수를 정리하는 헬퍼 함수
      */
@@ -133,7 +135,9 @@ export abstract class GenAICommand extends BaseCommand {
             fullResponse += metadataText;
         }
 
-        return marked.parseInline(fullResponse.trim()) as string;
+        let parsed = marked.parseInline(fullResponse.trim()) as string;
+        parsed = parsed.replace(/<br\s*\/?>/gi, '\n');
+        return parsed;
     }
 
     protected async buildPrompt(ctx: CommandContext, albumMessages: TelegramBot.Message[] = []): Promise<{contents: Content[], totalSize: number, error?: string}> {
@@ -212,12 +216,12 @@ export abstract class GenAICommand extends BaseCommand {
         }
 
         if (totalSize > MAX_FILE_SIZE) {
-            return {contents: [], totalSize, error: `총 파일 용량이 100MB를 초과할 수 없습니다. (${Math.round(totalSize / 1024 / 1024)}MB)`};
+            return {contents: [], totalSize, error: `총 파일 용량이 100MB를 초과할 수 없습니다. (${Math.round(totalSize / 1024 / 1024)}MB)` + this.errorSuffix};
         }
 
         const validContents = contents.filter(t => t.parts && t.parts.length > 0);
         if (validContents.length === 0) {
-            return {contents: [], totalSize, error: "프롬프트로 삼을 유효한 메시지가 없습니다."};
+            return {contents: [], totalSize, error: "프롬프트로 삼을 유효한 메시지가 없습니다." + this.errorSuffix};
         }
 
         return {contents: validContents, totalSize};
@@ -253,14 +257,14 @@ export abstract class GenAICommand extends BaseCommand {
                 const result = await genAI.models.generateContent(params);
 
                 if (result.promptFeedback?.blockReason) {
-                    return {error: `프롬프트 차단됨: ${result.promptFeedback.blockReason}`};
+                    return {error: `프롬프트 차단됨: ${result.promptFeedback.blockReason}` + this.errorSuffix};
                 }
                 const candidate = result.candidates?.[0];
                 if (candidate?.finishReason === 'PROHIBITED_CONTENT' || candidate?.finishReason === 'SAFETY') {
-                    return {error: '생성된 내용이 안전 정책에 의해 차단되었습니다.'};
+                    return {error: '생성된 내용이 안전 정책에 의해 차단되었습니다.' + this.errorSuffix};
                 }
                 if (candidate?.finishReason === 'MALFORMED_FUNCTION_CALL') {
-                    return {error: '함수 호출 오류입니다.'};
+                    return {error: '함수 호출 오류입니다.' + this.errorSuffix};
                 }
 
                 const output: GenerationOutput = {};
@@ -286,27 +290,40 @@ export abstract class GenAICommand extends BaseCommand {
                 }
 
                 if (Object.keys(output).length === 0) {
-                    return {error: '응답에 데이터가 없습니다.'};
+                    return {error: '응답에 데이터가 없습니다.' + this.errorSuffix};
                 }
                 return output;
 
             } catch (error: any) {
                 const msg = error.message || '';
-                if ((msg.includes('503') || msg.includes('500') || msg.includes('fetch failed')) && attempt < GenAICommand.MAX_RETRIES) {
+                const status = error.status;
+                const isRetryable = status === 503 || status === 500 || status === 502 || status === 504 ||
+                    msg.includes('503') || msg.includes('500') || msg.includes('fetch failed') ||
+                    error.name === 'AbortError' || msg.includes('aborted');
+
+                if (isRetryable && attempt < GenAICommand.MAX_RETRIES) {
                     await delay(attempt * 1000 + 1000);
                     continue;
                 }
                 console.error("AI Error:", error);
-                return {error: `API 오류: ${msg}`};
+
+                let friendlyMsg = `API 오류: ${msg}`;
+                if (status === 503 || msg.includes('high demand') || msg.includes('503')) {
+                    friendlyMsg = "현재 AI 모델의 접속량이 많아 처리가 지연되고 있습니다. 잠시 후 다시 시도해주세요. (503)";
+                } else if (error.name === 'AbortError' || msg.includes('aborted')) {
+                    friendlyMsg = "AI 응답 대기 시간이 초과되었습니다. (Timeout)";
+                }
+
+                return {error: friendlyMsg + this.errorSuffix};
             }
         }
-        return {error: '최대 재시도 횟수를 초과했습니다.'};
+        return {error: '최대 재시도 횟수를 초과했습니다.' + this.errorSuffix};
     }
 
     protected async handleError(ctx: CommandContext, error: unknown) {
         console.error(`Error executing ${this.name}:`, error);
         const errText = error instanceof Error ? error.message : 'Unknown error';
-        await ctx.bot.sendMessage(ctx.msg.chat.id, "오류가 발생했습니다.", {reply_to_message_id: ctx.msg.message_id});
+        await ctx.bot.sendMessage(ctx.msg.chat.id, "오류가 발생했습니다." + this.errorSuffix, {reply_to_message_id: ctx.msg.message_id});
         logMessage(ctx.msg, ctx.botId, errText); // 오류 로그
     }
 }

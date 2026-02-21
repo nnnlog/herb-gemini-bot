@@ -301,6 +301,11 @@ describe('GenAICommand', () => {
         });
 
         it('should catch AbortError', async () => {
+            const spy = jest.spyOn(global, 'setTimeout').mockImplementation((cb: any) => {
+                cb();
+                return {} as any;
+            });
+
             const controller = new AbortController();
             const params: any = {
                 model: 'model',
@@ -313,7 +318,9 @@ describe('GenAICommand', () => {
             mockGenerateContent.mockRejectedValue(error);
 
             const result = await command.publicCallAI(params, 'key');
-            expect(result.error).toContain('API 오류: The user aborted a request.');
+            expect(result.error).toContain('AI 응답 대기 시간이 초과되었습니다. (Timeout)');
+
+            spy.mockRestore();
         });
     });
 });

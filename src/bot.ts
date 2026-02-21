@@ -8,13 +8,16 @@ import {SummarizeCommand} from './commands/SummarizeCommand.js';
 import {config} from './config.js';
 import {CommandDispatcher} from './managers/CommandDispatcher.js';
 import {sessionManager} from './managers/SessionManager.js';
-import {initDb, logMessage} from './services/db.js';
+import {getMessage, initDb, logMessage} from './services/db.js';
 
 initDb();
 
 const bot = new TelegramBot(config.telegramToken, {
     polling: {
-        autoStart: false
+        autoStart: false,
+        params: {
+            allowed_updates: ['message', 'message_reaction']
+        }
     },
     request: {
         agentOptions: {
@@ -141,6 +144,31 @@ const mediaGroupTimers = new Map<string, NodeJS.Timeout>();
 
         // 단일 메시지
         await dispatcher.dispatch(msg);
+    });
+
+    // 사용자가 봇의 메시지에 반응(Reaction)을 달았을 때의 처리 (재시도 로직)
+    bot.on('message_reaction', async (reaction: any) => {
+        if (!reaction.user || reaction.user.is_bot) return;
+
+        // 새로운 반응이 추가되었는지 확인
+        if (reaction.new_reaction && reaction.new_reaction.length > 0) {
+            try {
+                // 대상 메시지(반응이 달린 메시지) 가져오기
+                const targetMsg = await getMessage(reaction.chat.id, reaction.message_id);
+                if (!targetMsg) return;
+
+                // 대상 메시지가 봇 본인의 메시지이며 원본 사용자 요청 메시지에 대한 답장이었는지 확인
+                if (targetMsg.from?.id === BOT_ID && targetMsg.reply_to_message) {
+                    const originalMsg = await getMessage(reaction.chat.id, targetMsg.reply_to_message.message_id);
+                    if (originalMsg) {
+                        console.log(`[Retry] 사용자가 봇의 메시지에 반응을 추가하여 원본 메시지(${originalMsg.message_id}) 재처리를 시도합니다.`);
+                        await dispatcher.dispatch(originalMsg);
+                    }
+                }
+            } catch (error) {
+                console.error("Error handling message_reaction for retry:", error);
+            }
+        }
     });
 
     await bot.startPolling();
