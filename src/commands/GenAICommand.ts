@@ -323,7 +323,7 @@ export abstract class GenAICommand extends BaseCommand {
     protected async handleError(ctx: CommandContext, error: unknown) {
         console.error(`Error executing ${this.name}:`, error);
         const errText = error instanceof Error ? error.message : 'Unknown error';
-        await ctx.sender.sendMessage(ctx.msg.chat.id, "오류가 발생했습니다." + this.errorSuffix, {reply_to_message_id: ctx.msg.message_id});
-        logMessage(ctx.msg, ctx.botId, CommandType.ERROR); // 오류 로그
+        const sentMsg = await ctx.sender.sendMessage(ctx.msg.chat.id, "오류가 발생했습니다." + this.errorSuffix, {reply_to_message_id: ctx.msg.message_id});
+        logMessage(sentMsg, ctx.botId, CommandType.ERROR); // 오류 로그
     }
 }

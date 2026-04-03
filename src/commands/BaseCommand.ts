@@ -81,23 +81,44 @@ export abstract class BaseCommand {
         const chunks: string[] = [];
         let currentChunk = "";
         let inPreBlock = false;
+        let openTags = "";
+        let closeTags = "";
+
         const lines = text.split('\n');
         const firstChunkMaxLength = (images && images.length > 0) ? CAPTION_MAX_LENGTH : MAX_LENGTH;
 
         for (const line of lines) {
             const maxLength = chunks.length === 0 ? firstChunkMaxLength : MAX_LENGTH;
 
+            // 라인이 추가되었을 때 최대 길이를 초과하는지 검사
             if (currentChunk.length + line.length + 1 > maxLength) {
                 if (inPreBlock) {
-                    currentChunk += '\n</pre>';
+                    currentChunk += '\n' + closeTags;
                 }
                 chunks.push(currentChunk);
-                currentChunk = inPreBlock ? '<pre>' : '';
+                currentChunk = inPreBlock ? openTags + '\n' : '';
             }
 
-            if (line.includes('<pre>')) inPreBlock = true;
+            // pre 블록 시작 감지
+            const preMatch = line.match(/(<pre[^>]*>)\s*(<code[^>]*>)?/i);
+            if (preMatch && !line.includes('</pre>')) {
+                inPreBlock = true;
+                openTags = preMatch[0];
+                closeTags = preMatch[2] ? '</code></pre>' : '</pre>';
+            } else if (line.includes('<pre>') && !line.includes('</pre>')) {
+                inPreBlock = true;
+                openTags = '<pre>';
+                closeTags = '</pre>';
+            }
+
             currentChunk += line + '\n';
-            if (line.includes('</pre>')) inPreBlock = false;
+            
+            // pre 블록 종료 감지
+            if (line.includes('</pre>')) {
+                inPreBlock = false;
+                openTags = '';
+                closeTags = '';
+            }
         }
 
         if (currentChunk) {
