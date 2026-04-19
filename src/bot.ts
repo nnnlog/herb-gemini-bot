@@ -84,16 +84,20 @@ const mediaGroupTimers = new Map<string, NodeJS.Timeout>();
 
             // 새 타이머 설정
             const timer = setTimeout(async () => {
-                const albumMessages = mediaGroups.get(groupId) || [];
-                mediaGroups.delete(groupId);
-                mediaGroupTimers.delete(groupId);
+                try {
+                    const albumMessages = mediaGroups.get(groupId) || [];
+                    mediaGroups.delete(groupId);
+                    mediaGroupTimers.delete(groupId);
 
-                // message_id를 기준으로 정렬하여 순서 보장
-                albumMessages.sort((a, b) => a.message_id - b.message_id);
+                    // message_id를 기준으로 정렬하여 순서 보장
+                    albumMessages.sort((a, b) => a.message_id - b.message_id);
 
-                const msgWithText = albumMessages.find(m => m.caption) || albumMessages[0];
+                    const msgWithText = albumMessages.find(m => m.caption) || albumMessages[0];
 
-                await dispatcher.dispatch(msgWithText, albumMessages);
+                    await dispatcher.dispatch(msgWithText, albumMessages);
+                } catch (error) {
+                    console.error("Error dispatching album messages:", error);
+                }
             }, 500); // 500ms 지연
 
             mediaGroupTimers.set(groupId, timer);
@@ -101,7 +105,11 @@ const mediaGroupTimers = new Map<string, NodeJS.Timeout>();
         }
 
         // 단일 메시지
-        await dispatcher.dispatch(msg);
+        try {
+            await dispatcher.dispatch(msg);
+        } catch (error) {
+            console.error("Error dispatching single message:", error);
+        }
     });
 
     // 사용자가 봇의 재시도 버튼을 눌렀을 때의 처리

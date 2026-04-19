@@ -339,15 +339,19 @@ export abstract class GenAICommand extends BaseCommand {
             }
         }
 
-        const sentMessages = await this.reply(ctx, errorMessage, {
-            reply_markup: {
-                inline_keyboard: [
-                    [{ text: "🔄 재시도", callback_data: `retry_${ctx.msg.message_id}` }]
-                ]
+        try {
+            const sentMessages = await this.reply(ctx, errorMessage, {
+                reply_markup: {
+                    inline_keyboard: [
+                        [{ text: "🔄 재시도", callback_data: `retry_${ctx.msg.message_id}` }]
+                    ]
+                }
+            });
+            if (sentMessages && sentMessages.length > 0) {
+                logMessage(sentMessages[0], ctx.botId, CommandType.ERROR); // 오류 로그
             }
-        });
-        if (sentMessages && sentMessages.length > 0) {
-            logMessage(sentMessages[0], ctx.botId, CommandType.ERROR); // 오류 로그
+        } catch (e: any) {
+            console.error("Failed to send error message:", e.message || e);
         }
     }
 

@@ -57,24 +57,42 @@ export class MessageSender {
     }
 
     public async editMessageText(text: string, options?: TelegramBot.EditMessageTextOptions): Promise<TelegramBot.Message | boolean> {
-        const result = await this.bot.editMessageText(text, options);
-        if (typeof result !== 'boolean') {
-            await this.logResult(result);
+        try {
+            const result = await this.bot.editMessageText(text, options);
+            if (typeof result !== 'boolean') {
+                await this.logResult(result);
+            }
+            return result;
+        } catch (e: any) {
+            console.error(`[MessageSender] Failed to edit message:`, e.message || e);
+            return false;
         }
-        return result;
     }
 
     public async deleteMessage(chatId: TelegramBot.ChatId, messageId: number, options?: any): Promise<boolean> {
-        return await this.bot.deleteMessage(chatId, messageId, options);
+        try {
+            return await this.bot.deleteMessage(chatId, messageId, options);
+        } catch (e: any) {
+            console.error(`[MessageSender] Failed to delete message ${messageId}:`, e.message || e);
+            return false;
+        }
     }
 
     public async setMessageReaction(chatId: TelegramBot.ChatId, messageId: number, options?: any): Promise<boolean> {
-        // setMessageReaction usually returns boolean, no logging of the message itself is needed here as it modifies an existing one
-        // and doesn't return a Message object.
-        return await this.bot.setMessageReaction(chatId, messageId, options);
+        try {
+            return await this.bot.setMessageReaction(chatId, messageId, options);
+        } catch (e: any) {
+            console.error(`[MessageSender] Failed to set reaction on message ${messageId}:`, e.message || e);
+            return false;
+        }
     }
 
     public async sendChatAction(chatId: TelegramBot.ChatId, action: TelegramBot.ChatAction, options?: TelegramBot.SendChatActionOptions): Promise<boolean> {
-        return await this.bot.sendChatAction(chatId, action, options);
+        try {
+            return await this.bot.sendChatAction(chatId, action, options);
+        } catch (e: any) {
+            console.error(`[MessageSender] Failed to send chat action ${action}:`, e.message || e);
+            return false;
+        }
     }
 }
