@@ -64,6 +64,10 @@ export class MessageSender {
         return result;
     }
 
+    public async deleteMessage(chatId: TelegramBot.ChatId, messageId: number, options?: any): Promise<boolean> {
+        return await this.bot.deleteMessage(chatId, messageId, options);
+    }
+
     public async setMessageReaction(chatId: TelegramBot.ChatId, messageId: number, options?: any): Promise<boolean> {
         // setMessageReaction usually returns boolean, no logging of the message itself is needed here as it modifies an existing one
         // and doesn't return a Message object.

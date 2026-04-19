@@ -46,8 +46,7 @@ export class ChatCommand extends GenAICommand {
             const result = await this.callAI(request, config.googleApiKey);
 
             if (result.error) {
-                await this.reply(ctx, result.error);
-                logMessage(msg, ctx.botId, CommandType.ERROR);
+                await this.replyWithError(ctx, result.error);
                 return;
             }
 

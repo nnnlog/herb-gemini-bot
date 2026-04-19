@@ -42,6 +42,7 @@ describe('ImageCommand', () => {
         (command as any).callAI = mockCallAI;
         (command as any).buildPrompt = jest.fn<any>().mockResolvedValue({contents: [{parts: [{text: 'drawing of a cat'}]}]});
         (command as any).reply = jest.fn<any>().mockResolvedValue([{message_id: 100}]);
+        (command as any).replyWithError = jest.fn<any>().mockResolvedValue([{message_id: 100}]);
         (command as any).handleError = jest.fn<any>();
 
         mockBot = {setMessageReaction: jest.fn()} as unknown as TelegramBot;

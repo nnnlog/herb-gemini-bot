@@ -1,7 +1,7 @@
 import TelegramBot from 'node-telegram-bot-api';
-import {Config} from '../config.js';
-import {MessageSender} from '../managers/MessageSender.js';
-import {Session} from '../managers/SessionManager.js';
+import { Config } from '../config.js';
+import { MessageSender } from '../managers/MessageSender.js';
+import { Session } from '../managers/SessionManager.js';
 
 export interface CommandContext {
     msg: TelegramBot.Message;
@@ -13,6 +13,7 @@ export interface CommandContext {
     cleanedText: string;
     isImplicit: boolean;
     botId: number;
+    retryMessageId?: number;
 }
 
 export interface ImageData {
@@ -62,6 +63,12 @@ export abstract class BaseCommand {
         const {sender, msg} = ctx;
         const chatId = msg.chat.id;
         const replyToId = msg.message_id;
+
+        // 기존 재시도 메시지가 있다면 성공 응답을 달기 전/직후에 삭제합니다.
+        if (ctx.retryMessageId) {
+            await sender.deleteMessage(chatId, ctx.retryMessageId).catch(() => {});
+            ctx.retryMessageId = undefined; // 두 번 삭제 안되게 처리
+        }
 
         const MAX_LENGTH = 4096;
         const CAPTION_MAX_LENGTH = 1024;

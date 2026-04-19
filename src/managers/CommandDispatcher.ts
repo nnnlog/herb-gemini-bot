@@ -1,12 +1,12 @@
 import TelegramBot from 'node-telegram-bot-api';
-import {BaseCommand, CommandContext} from '../commands/BaseCommand.js';
-import {Config} from '../config.js';
-import {isUserAuthorized} from '../services/auth.js';
-import {CommandType, getMessageMetadata, logMessage} from '../services/db.js';
-import {MessageSender} from './MessageSender.js';
-import {SessionManager} from './SessionManager.js';
+import { BaseCommand, CommandContext } from '../commands/BaseCommand.js';
+import { Config } from '../config.js';
+import { isUserAuthorized } from '../services/auth.js';
+import { CommandType, getMessageMetadata, logMessage } from '../services/db.js';
+import { MessageSender } from './MessageSender.js';
+import { SessionManager } from './SessionManager.js';
 
-import {CommandRegistry} from './CommandRegistry.js';
+import { CommandRegistry } from './CommandRegistry.js';
 
 export class CommandDispatcher implements CommandRegistry {
     private commands: Map<string, BaseCommand> = new Map();
@@ -43,7 +43,7 @@ export class CommandDispatcher implements CommandRegistry {
         return Array.from(new Set(this.commands.values()));
     }
 
-    public async dispatch(msg: TelegramBot.Message, albumMessages: TelegramBot.Message[] = []) {
+    public async dispatch(msg: TelegramBot.Message, albumMessages: TelegramBot.Message[] = [], retryMessageId?: number) {
         if (!msg.from || !isUserAuthorized(msg.chat.id, msg.from.id)) {
             logMessage(msg, this.botId);
             return;
@@ -122,7 +122,8 @@ export class CommandDispatcher implements CommandRegistry {
             commandName,
             cleanedText,
             isImplicit,
-            botId
+            botId,
+            retryMessageId
         };
 
         if (await command.validate(ctx)) {

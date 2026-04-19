@@ -75,7 +75,8 @@ describe('GenAICommand', () => {
         command = new TestGenAICommand();
 
         mockBot = {
-            sendMessage: jest.fn<any>().mockResolvedValue({message_id: 2})
+            sendMessage: jest.fn<any>().mockResolvedValue({message_id: 2}),
+            editMessageText: jest.fn<any>().mockResolvedValue({})
         } as unknown as TelegramBot;
 
         mockContext = {
@@ -331,6 +332,50 @@ describe('GenAICommand', () => {
             expect(result.error).toContain('AI 응답 대기 시간이 초과되었습니다. (Timeout)');
 
             spy.mockRestore();
+        });
+    });
+
+    describe('replyWithError', () => {
+        it('should send a new message with inline keyboard if retryMessageId is not present', async () => {
+            (command as any).reply = jest.fn<any>().mockResolvedValue([{message_id: 2}]);
+            await (command as any).replyWithError(mockContext, 'error msg');
+            
+            expect((command as any).reply).toHaveBeenCalledWith(
+                mockContext, 
+                'error msg', 
+                expect.objectContaining({
+                    reply_markup: {
+                        inline_keyboard: [[{ text: "🔄 재시도", callback_data: `retry_1` }]]
+                    }
+                })
+            );
+            expect(mockLogMessage).toHaveBeenCalledTimes(1);
+        });
+
+        it('should edit the existing message if retryMessageId is present', async () => {
+            mockContext.retryMessageId = 555;
+            // Setup reply mock to ensure it is not called
+            (command as any).reply = jest.fn<any>();
+            
+            await (command as any).replyWithError(mockContext, 'error msg');
+            
+            expect(mockContext.sender.editMessageText).toHaveBeenCalledWith('error msg', {
+                chat_id: 123,
+                message_id: 555,
+                reply_markup: {
+                    inline_keyboard: [[{ text: "🔄 재시도", callback_data: `retry_1` }]]
+                }
+            });
+            expect((command as any).reply).not.toHaveBeenCalled();
+            expect(mockLogMessage).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('handleError', () => {
+        it('should call replyWithError when an error occurs', async () => {
+            (command as any).replyWithError = jest.fn<any>();
+            await (command as any).handleError(mockContext, new Error('Test Error'));
+            expect((command as any).replyWithError).toHaveBeenCalledWith(mockContext, '오류가 발생했습니다.');
         });
     });
 });

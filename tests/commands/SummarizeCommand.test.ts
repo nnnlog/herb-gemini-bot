@@ -43,6 +43,7 @@ describe('SummarizeCommand', () => {
         (command as any).callAI = mockCallAI;
         (command as any).buildPrompt = jest.fn<any>().mockResolvedValue({contents: [{parts: [{text: 'http://example.com'}]}]});
         (command as any).reply = jest.fn<any>().mockResolvedValue([{message_id: 100}]);
+        (command as any).replyWithError = jest.fn<any>().mockResolvedValue([{message_id: 100}]);
         (command as any).handleError = jest.fn<any>();
 
         mockBot = {setMessageReaction: jest.fn<any>()} as unknown as TelegramBot;

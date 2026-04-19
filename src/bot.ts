@@ -16,7 +16,7 @@ const bot = new TelegramBot(config.telegramToken, {
     polling: {
         autoStart: false,
         params: {
-            allowed_updates: ['message', 'message_reaction']
+            allowed_updates: ['message', 'callback_query']
         }
     },
     request: {
@@ -104,44 +104,50 @@ const mediaGroupTimers = new Map<string, NodeJS.Timeout>();
         await dispatcher.dispatch(msg);
     });
 
-    // 사용자가 봇의 메시지에 반응(Reaction)을 달았을 때의 처리 (재시도 로직)
+    // 사용자가 봇의 재시도 버튼을 눌렀을 때의 처리
     const activeRetries = new Set<string>();
 
-    bot.on('message_reaction', async (reaction: any) => {
-        if (!reaction.user || reaction.user.is_bot) return;
+    bot.on('callback_query', async (query) => {
+        if (!query.data || !query.message) return;
 
-        // 새로운 반응이 추가되었는지 확인
-        if (reaction.new_reaction && reaction.new_reaction.length > 0) {
-            const retryKey = `${reaction.chat.id}_${reaction.message_id}`;
+        if (query.data.startsWith('retry_')) {
+            const originalMsgIdStr = query.data.split('_')[1];
+            const originalMsgId = parseInt(originalMsgIdStr, 10);
+            const chatId = query.message.chat.id;
+            const retryKey = `${chatId}_${originalMsgId}`;
 
             if (activeRetries.has(retryKey)) {
-                console.log(`[Retry] 메시지(${retryKey})에 대한 재처리가 이미 진행 중입니다. 중복 요청을 무시합니다.`);
+                await bot.answerCallbackQuery(query.id, { text: "이미 재처리가 진행 중입니다.", show_alert: false }).catch(() => {});
                 return;
             }
 
             activeRetries.add(retryKey);
 
             try {
-                // 대상 메시지(반응이 달린 메시지) 가져오기
-                const targetMsg = await getMessage(reaction.chat.id, reaction.message_id);
-                if (!targetMsg) return;
-
-                // 대상 메시지가 봇 본인의 메시지이며 원본 사용자 요청 메시지에 대한 답장이었는지 확인
-                if (targetMsg.from?.id === BOT_ID && targetMsg.reply_to_message) {
-                    const meta = await getMessageMetadata(reaction.chat.id, reaction.message_id);
-
-                    if (meta?.command_type === CommandType.ERROR) {
-                        const originalMsg = await getMessage(reaction.chat.id, targetMsg.reply_to_message.message_id);
-                        if (originalMsg) {
-                            console.log(`[Retry] 사용자가 봇의 메시지에 반응을 추가하여 원본 메시지(${originalMsg.message_id}) 재처리를 시도합니다.`);
-                            await dispatcher.dispatch(originalMsg);
-                        }
-                    } else {
-                        console.log(`[Retry] 메시지(${targetMsg.message_id})는 에러 메시지가 아니므로 재시도하지 않습니다.`);
-                    }
+                // 원본 대상 메시지 가져오기
+                const originalMsg = await getMessage(chatId, originalMsgId);
+                if (!originalMsg) {
+                    await bot.answerCallbackQuery(query.id, { text: "원본 메시지를 찾을 수 없습니다.", show_alert: true }).catch(() => {});
+                    return;
                 }
+
+                await bot.answerCallbackQuery(query.id).catch(() => {});
+
+                // 버튼을 제거하고 로딩 상태로 변경
+                try {
+                    await bot.editMessageText("⏳ 재시도 중입니다...", { 
+                        chat_id: chatId, 
+                        message_id: query.message.message_id 
+                    });
+                } catch (e) {
+                    console.error("Failed to edit retry message:", e);
+                }
+
+                console.log(`[Retry] 원본 메시지(${originalMsg.message_id}) 재처리를 시도합니다.`);
+                
+                await dispatcher.dispatch(originalMsg, [], query.message.message_id);
             } catch (error) {
-                console.error("Error handling message_reaction for retry:", error);
+                console.error("Error handling callback_query for retry:", error);
             } finally {
                 activeRetries.delete(retryKey);
             }

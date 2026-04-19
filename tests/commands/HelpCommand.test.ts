@@ -39,7 +39,8 @@ describe('HelpCommand', () => {
         };
 
         command = new HelpCommand(mockRegistry);
-        (command as any).reply = jest.fn<any>().mockResolvedValue([]);
+        (command as any).reply = jest.fn<any>().mockResolvedValue([{message_id: 100}]);
+        (command as any).replyWithError = jest.fn<any>().mockResolvedValue([]);
 
         mockBot = {} as unknown as TelegramBot;
         mockContext = {

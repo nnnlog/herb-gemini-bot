@@ -37,7 +37,7 @@ export abstract class GenAICommand extends BaseCommand {
         'go': 'text/x-go', 'rs': 'text/rust', 'html': 'text/html', 'css': 'text/css',
     };
 
-    protected readonly errorSuffix = '\n\n💡 봇의 에러 메시지에 반응(👍 등)을 추가하면 요청을 재시도합니다.';
+    protected readonly errorSuffix = '';
 
     /**
      * 텍스트에서 명령어 인수를 정리하는 헬퍼 함수
@@ -320,10 +320,39 @@ export abstract class GenAICommand extends BaseCommand {
         return {error: '최대 재시도 횟수를 초과했습니다.' + this.errorSuffix};
     }
 
+    protected async replyWithError(ctx: CommandContext, errorMessage: string) {
+        if (ctx.retryMessageId) {
+            try {
+                await ctx.sender.editMessageText(errorMessage, {
+                    chat_id: ctx.msg.chat.id,
+                    message_id: ctx.retryMessageId,
+                    reply_markup: {
+                        inline_keyboard: [
+                            [{ text: "🔄 재시도", callback_data: `retry_${ctx.msg.message_id}` }]
+                        ]
+                    }
+                });
+                return;
+            } catch (e) {
+                console.error("Failed to edit retry message error:", e);
+                // Fallback to sending a new one
+            }
+        }
+
+        const sentMessages = await this.reply(ctx, errorMessage, {
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: "🔄 재시도", callback_data: `retry_${ctx.msg.message_id}` }]
+                ]
+            }
+        });
+        if (sentMessages && sentMessages.length > 0) {
+            logMessage(sentMessages[0], ctx.botId, CommandType.ERROR); // 오류 로그
+        }
+    }
+
     protected async handleError(ctx: CommandContext, error: unknown) {
         console.error(`Error executing ${this.name}:`, error);
-        const errText = error instanceof Error ? error.message : 'Unknown error';
-        const sentMsg = await ctx.sender.sendMessage(ctx.msg.chat.id, "오류가 발생했습니다." + this.errorSuffix, {reply_to_message_id: ctx.msg.message_id});
-        logMessage(sentMsg, ctx.botId, CommandType.ERROR); // 오류 로그
+        await this.replyWithError(ctx, "오류가 발생했습니다." + this.errorSuffix);
     }
 }

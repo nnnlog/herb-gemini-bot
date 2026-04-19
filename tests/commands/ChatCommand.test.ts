@@ -43,6 +43,7 @@ describe('ChatCommand', () => {
         // Inject mock buildPrompt
         (command as any).buildPrompt = jest.fn<any>().mockResolvedValue({contents: [{parts: [{text: 'hi'}]}]});
         (command as any).reply = jest.fn<any>().mockResolvedValue([{message_id: 100}]);
+        (command as any).replyWithError = jest.fn<any>().mockResolvedValue([{message_id: 100}]);
         (command as any).handleError = jest.fn<any>();
 
         mockBot = {
@@ -82,7 +83,7 @@ describe('ChatCommand', () => {
 
         await command.execute(mockContext);
 
-        expect((command as any).reply).toHaveBeenCalledWith(expect.anything(), 'Some API Error');
+        expect((command as any).replyWithError).toHaveBeenCalledWith(expect.anything(), 'Some API Error');
     });
 
     it('should handle buildPrompt errors', async () => {
