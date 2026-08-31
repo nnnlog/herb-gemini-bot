@@ -1,38 +1,28 @@
-# Stage 1: Build the TypeScript application
-FROM node:22 AS build
+# syntax=docker/dockerfile:1
+FROM node:24-slim AS base
+ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
+RUN corepack enable
+WORKDIR /app
+COPY package.json pnpm-lock.yaml ./
 
-# Set the working directory
-WORKDIR /usr/src/app
+FROM base AS build
+RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store pnpm fetch
+COPY tsconfig.json tsconfig.build.json ./
+COPY src ./src
+RUN pnpm install --frozen-lockfile --offline && pnpm run build
 
-# Copy package.json and package-lock.json for dependency installation
-# Using a lock file is a best practice for reproducible builds
-COPY package*.json ./
+FROM base AS prod-deps
+RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \
+    pnpm fetch --prod && pnpm install --prod --frozen-lockfile --offline
 
-# Install all dependencies, including devDependencies for building
-RUN npm install
-
-# Copy the rest of the source code
-COPY . .
-
-# Compile TypeScript to JavaScript
-RUN npm run build
-
-# --- #
-
-# Stage 2: Create the final production image
-FROM node:22
-
-# Set the working directory
-WORKDIR /usr/src/app
-
-# Copy package.json and package-lock.json
-COPY package*.json ./
-
-# Install only production dependencies
-RUN npm install --omit=dev
-
-# Copy the compiled JavaScript output from the build stage
-COPY --from=build /usr/src/app/dist ./dist
-
-# Define the command to run the application
-CMD [ "node", "dist/bot.js" ]
+FROM node:24-slim
+ENV NODE_ENV=production
+RUN mkdir /data && chown node:node /data
+COPY --from=prod-deps /app/node_modules /app/node_modules
+COPY --from=build /app/dist /app/dist
+COPY --from=build /app/package.json /app/package.json
+USER node
+# The DB path is ./telegram_log.db (cwd-relative); WORKDIR=/data puts it on the
+# mount, and .env is read from the same directory — identical to local dev.
+WORKDIR /data
+CMD ["node", "--env-file-if-exists=.env", "/app/dist/main.js"]

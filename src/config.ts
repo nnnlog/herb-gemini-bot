@@ -1,26 +1,59 @@
-import dotenv from 'dotenv';
-
-dotenv.config();
-
 export interface Config {
-    telegramToken: string;
-    googleApiKey: string;
-    imageModelName: string;
-    geminiProModel: string;
-    allowedChannelIds: string[];
-    trustedUserIds: string[];
+  readonly telegramToken: string;
+  readonly googleApiKey: string;
+  readonly models: {
+    readonly pro: string;
+    readonly image: string;
+  };
+  readonly allowedChannelIds: ReadonlySet<number>;
+  readonly trustedUserIds: ReadonlySet<number>;
 }
 
-export const config: Config = {
-    telegramToken: process.env.TELEGRAM_BOT_TOKEN as string,
-    googleApiKey: process.env.GOOGLE_API_KEY as string,
-    imageModelName: process.env.IMAGE_MODEL_NAME as string,
-    geminiProModel: process.env.GEMINI_PRO_MODEL as string,
-    allowedChannelIds: (process.env.ALLOWED_CHANNEL_IDS as string).split(','),
-    trustedUserIds: (process.env.TRUSTED_USER_IDS as string).split(','),
-};
+export class ConfigError extends Error {
+  readonly problems: readonly string[];
 
-if (!config.telegramToken || !config.googleApiKey) {
-    console.error("오류: TELEGRAM_BOT_TOKEN 또는 GOOGLE_API_KEY가 .env 파일에 설정되지 않았습니다.");
-    process.exit(1);
+  constructor(problems: readonly string[]) {
+    super(`환경 변수 오류:\n${problems.map((p) => `  - ${p}`).join("\n")}`);
+    this.name = "ConfigError";
+    this.problems = problems;
+  }
+}
+
+export function loadConfig(env: Record<string, string | undefined> = process.env): Config {
+  const problems: string[] = [];
+
+  const required = (name: string): string => {
+    const value = env[name]?.trim();
+    if (!value) problems.push(`${name}이(가) 설정되지 않았습니다.`);
+    return value ?? "";
+  };
+
+  const idSet = (name: string): ReadonlySet<number> => {
+    const ids = new Set<number>();
+    for (const token of (env[name] ?? "").split(",")) {
+      const trimmed = token.trim();
+      if (trimmed === "") continue;
+      const id = Number(trimmed);
+      if (!Number.isInteger(id)) {
+        problems.push(`${name}의 '${trimmed}'은(는) 정수 ID가 아닙니다.`);
+        continue;
+      }
+      ids.add(id);
+    }
+    return ids;
+  };
+
+  const config: Config = {
+    telegramToken: required("TELEGRAM_BOT_TOKEN"),
+    googleApiKey: required("GOOGLE_API_KEY"),
+    models: {
+      pro: required("GEMINI_PRO_MODEL"),
+      image: required("IMAGE_MODEL_NAME"),
+    },
+    allowedChannelIds: idSet("ALLOWED_CHANNEL_IDS"),
+    trustedUserIds: idSet("TRUSTED_USER_IDS"),
+  };
+
+  if (problems.length > 0) throw new ConfigError(problems);
+  return config;
 }

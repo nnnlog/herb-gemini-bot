@@ -1,0 +1,14 @@
+node_modules
+dist
+.git
+.env
+*.db
+*.db-wal
+*.db-shm
+*.db-journal
+tests
+docs
+.github
+.claude
+CLAUDE.md
+README.md
