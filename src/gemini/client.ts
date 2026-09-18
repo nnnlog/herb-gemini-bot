@@ -1,4 +1,3 @@
-import { scheduler } from "node:timers/promises";
 import type {
   Content,
   GenerateContentConfig,
@@ -37,8 +36,13 @@ export type GenResult =
     }
   | { ok: false; userMessage: string };
 
-const MAX_ATTEMPTS = 3;
+const MAX_ATTEMPTS = 12;
 const TIMEOUT_MS = 10 * 60 * 1000;
+// 429/503 are per-request capacity shedding; other 5xx usually come from the request itself
+const OVERLOAD_RETRY_WINDOW_MS = 2 * 60 * 1000;
+const TRANSIENT_RETRY_WINDOW_MS = 15 * 1000;
+const BACKOFF_BASE_MS = 1000;
+const BACKOFF_CAP_MS = 10 * 1000;
 
 export class GeminiClient {
   private readonly port: GeminiPort;
@@ -50,7 +54,9 @@ export class GeminiClient {
   }
 
   async generate(request: GenRequest): Promise<GenResult> {
-    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    // the window opens at the first failure — generation itself can run for minutes
+    let failedAt: number | undefined;
+    for (let attempt = 1; ; attempt++) {
       // fresh signal per attempt — a spent signal would fail every retry instantly
       const signal = AbortSignal.any([AbortSignal.timeout(TIMEOUT_MS), this.shutdownSignal]);
       try {
@@ -62,16 +68,18 @@ export class GeminiClient {
         return classifyResponse(response);
       } catch (error) {
         const cls = classifyError(error);
-        if (cls.retryable && attempt < MAX_ATTEMPTS) {
-          log.warn({ err: error, attempt }, "gemini 호출 실패, 재시도");
-          await delay(cls.retryAfterMs ?? attempt * 1000 + 1000, this.shutdownSignal); // 2s, 3s; 429 hint wins
-          continue;
+        failedAt ??= Date.now();
+        const elapsedMs = Date.now() - failedAt;
+        const waitMs = Math.max(cls.retryAfterMs ?? 0, backoffMs(attempt));
+        if (attempt < MAX_ATTEMPTS && elapsedMs + waitMs <= cls.retryWindowMs) {
+          log.warn({ err: error, attempt, elapsedMs, waitMs }, "gemini 호출 실패, 재시도");
+          await delay(waitMs, this.shutdownSignal);
+          if (!this.shutdownSignal.aborted) continue;
         }
-        log.error({ err: error }, "gemini 호출 실패");
+        log.error({ err: error, attempt, elapsedMs }, "gemini 호출 실패");
         return { ok: false, userMessage: cls.userMessage };
       }
     }
-    return { ok: false, userMessage: strings.errors.retriesExhausted }; // unreachable fallback
   }
 }
 
@@ -118,7 +126,8 @@ function classifyResponse(response: GenerateContentResponse): GenResult {
 }
 
 interface ErrorClass {
-  retryable: boolean;
+  /** How long retries may keep starting, measured from the first failure; 0 never retries. */
+  retryWindowMs: number;
   userMessage: string;
   retryAfterMs?: number;
 }
@@ -131,10 +140,6 @@ const STATUS_NAMES: Readonly<Record<string, number>> = {
   DEADLINE_EXCEEDED: 504,
 };
 
-const MAX_RETRY_DELAY_MS = 30 * 1000;
-// a server hint of "0s" must not collapse the backoff into a burst
-const MIN_RETRY_DELAY_MS = 1000;
-
 function classifyError(error: unknown): ErrorClass {
   const err = error as { message?: unknown; status?: unknown; name?: unknown } | null;
   const message = typeof err?.message === "string" ? err.message : String(error);
@@ -142,31 +147,33 @@ function classifyError(error: unknown): ErrorClass {
 
   // timeouts/aborts are not auto-retried — manual 🔄 only
   if (name === "AbortError" || name === "TimeoutError") {
-    return { retryable: false, userMessage: strings.errors.timeout };
+    return { retryWindowMs: 0, userMessage: strings.errors.timeout };
   }
 
   const status = typeof err?.status === "number" ? err.status : statusOf(message);
   if (status === 429) {
     const hint = parseRetryDelayMs(message);
     return {
-      retryable: true,
+      retryWindowMs: OVERLOAD_RETRY_WINDOW_MS,
       userMessage: strings.errors.rateLimited,
       ...(hint !== undefined ? { retryAfterMs: hint } : {}),
     };
   }
-  if (status === 503) return { retryable: true, userMessage: strings.errors.overloaded };
+  if (status === 503) {
+    return { retryWindowMs: OVERLOAD_RETRY_WINDOW_MS, userMessage: strings.errors.overloaded };
+  }
   if (status === 500 || status === 502 || status === 504) {
-    return { retryable: true, userMessage: strings.errors.apiError };
+    return { retryWindowMs: TRANSIENT_RETRY_WINDOW_MS, userMessage: strings.errors.apiError };
   }
   if (status === undefined) {
     if (message.includes("aborted")) {
-      return { retryable: false, userMessage: strings.errors.timeout };
+      return { retryWindowMs: 0, userMessage: strings.errors.timeout };
     }
     if (message.includes("fetch failed")) {
-      return { retryable: true, userMessage: strings.errors.apiError };
+      return { retryWindowMs: TRANSIENT_RETRY_WINDOW_MS, userMessage: strings.errors.apiError };
     }
   }
-  return { retryable: false, userMessage: strings.errors.apiError };
+  return { retryWindowMs: 0, userMessage: strings.errors.apiError };
 }
 
 /** Read the status out of the error body's own fields — never from loose digits in prose. */
@@ -177,14 +184,32 @@ function statusOf(message: string): number | undefined {
   return name?.[1] !== undefined ? STATUS_NAMES[name[1]] : undefined;
 }
 
-/** Best-effort parse of RetryInfo (`"retryDelay":"7s"`) from a 429 body, capped. */
+/** Best-effort parse of RetryInfo (`"retryDelay":"7s"`) from a 429 body. */
 function parseRetryDelayMs(message: string): number | undefined {
   const match = /"retryDelay"\s*:\s*"(\d+(?:\.\d+)?)s"/.exec(message);
   if (!match?.[1]) return undefined;
-  const hint = Math.round(Number(match[1]) * 1000);
-  return Math.min(Math.max(hint, MIN_RETRY_DELAY_MS), MAX_RETRY_DELAY_MS);
+  return Math.round(Number(match[1]) * 1000);
 }
 
+function backoffMs(attempt: number): number {
+  return Math.min(BACKOFF_BASE_MS * 2 ** (attempt - 1), BACKOFF_CAP_MS);
+}
+
+// global setTimeout, not node:timers/promises — fake timers cannot drive the latter
 function delay(ms: number, signal: AbortSignal): Promise<void> {
-  return scheduler.wait(ms, { signal }).catch(() => undefined);
+  return new Promise((resolve) => {
+    if (signal.aborted) {
+      resolve();
+      return;
+    }
+    const onAbort = (): void => {
+      clearTimeout(timer);
+      resolve();
+    };
+    const timer = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
 }

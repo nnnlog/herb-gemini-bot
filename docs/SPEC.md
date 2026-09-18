@@ -23,7 +23,8 @@ implemented in `src/strings.ts` and nowhere else.
 - Param tokens (/image resolution): the first case-insensitive match **anywhere** in the
   text is consumed and removed from the prompt (plus one adjacent space — newlines are
   preserved). The same rule applies to explicit, implicit, and history parsing.
-- The 10-minute timeout and 3-attempts-total retry policy are code constants, not env.
+- The 10-minute timeout and the auto-retry limits (12 attempts, per-class windows,
+  backoff) are code constants, not env.
 
 ## Conversation mechanics
 
@@ -113,17 +114,21 @@ implemented in `src/strings.ts` and nowhere else.
 | SAFETY / PROHIBITED_CONTENT | `생성된 내용이 안전 정책에 의해 차단되었습니다.` | ○ | ✕ |
 | MALFORMED_FUNCTION_CALL | `함수 호출 오류입니다.` | ○ | ✕ |
 | Empty response | `응답에 데이터가 없습니다.` | ○ | ✕ |
-| 503 / overloaded | `현재 AI 모델의 접속량이 많아 처리가 지연되고 있습니다. 잠시 후 다시 시도해주세요. (503)` | ○ | ○ 2s/3s |
-| 429 | `요청 한도를 초과했습니다. 잠시 후 다시 시도해주세요. (429)` | ○ | ○ retryDelay hint first |
-| 500/502/504/fetch failed | (when exhausted) `API 오류가 발생했습니다.` | ○ | ○ |
+| 503 / overloaded | `현재 AI 모델의 접속량이 많아 처리가 지연되고 있습니다. 잠시 후 다시 시도해주세요. (503)` | ○ | ○ 2-min window |
+| 429 | `요청 한도를 초과했습니다. 잠시 후 다시 시도해주세요. (429)` | ○ | ○ 2-min window; the retryDelay hint is the minimum wait |
+| 500/502/504/fetch failed | (when exhausted) `API 오류가 발생했습니다.` | ○ | ○ 15 s window |
 | Timeout (fresh signal per attempt) | `AI 응답 대기 시간이 초과되었습니다. (Timeout)` | ○ | ✕ |
 | Other API error | `API 오류가 발생했습니다.` (raw SDK text goes to logs only) | ○ | ✕ |
 | Pipeline exception | `오류가 발생했습니다.` | ○ | ✕ |
 | Over 100MiB / no valid prompt | copy above / `프롬프트로 삼을 유효한 메시지가 없습니다.` | ✕ | ✕ |
 
-Exhausted retries keep their class copy. `최대 재시도 횟수를 초과했습니다.` is an
-unreachable defensive fallback. Requests aborted by shutdown (SIGTERM) get no error
-reply.
+At most 12 attempts; the wait is 1, 2, 4, 8, 10, 10, … s (1s·2ⁿ⁻¹ capped at 10s). A
+window opens at the first failure; no new attempt starts once the attempt cap is
+reached or elapsed + next wait exceeds the latest error's window. Retrying stops on
+shutdown.
+
+Exhausted retries keep their class copy. Requests aborted by shutdown (SIGTERM) get no
+error reply.
 
 ## Database
 

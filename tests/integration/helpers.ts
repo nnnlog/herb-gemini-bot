@@ -160,6 +160,11 @@ export function textResponse(text: string, parts?: Part[]): GenerateContentRespo
   } as unknown as GenerateContentResponse;
 }
 
+/** SDK-shaped API failure: `status` plus the stringified error body. */
+export function apiError(status: number, message?: string): Error {
+  return Object.assign(new Error(message ?? `{"error":{"code":${status}}}`), { status });
+}
+
 export function imageResponse(caption: string | undefined): GenerateContentResponse {
   const parts: Part[] = [
     ...(caption ? [{ text: caption }] : []),

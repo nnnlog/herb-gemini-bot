@@ -36,7 +36,6 @@ export const strings = {
     rateLimited: "요청 한도를 초과했습니다. 잠시 후 다시 시도해주세요. (429)",
     timeout: "AI 응답 대기 시간이 초과되었습니다. (Timeout)",
     apiError: "API 오류가 발생했습니다.",
-    retriesExhausted: "최대 재시도 횟수를 초과했습니다.",
     unexpected: "오류가 발생했습니다.",
     filesTooLarge: (totalMb: number) => `총 파일 용량이 100MB를 초과할 수 없습니다. (${totalMb}MB)`,
     noValidPrompt: "프롬프트로 삼을 유효한 메시지가 없습니다.",

@@ -1,6 +1,7 @@
 import type { Message } from "grammy/types";
 import { afterEach, expect, it, vi } from "vitest";
 import {
+  apiError,
   CHAT,
   callback,
   createFakeGemini,
@@ -9,6 +10,9 @@ import {
   textResponse,
   userMsg,
 } from "./helpers.ts";
+
+const OVERLOADED_COPY =
+  "현재 AI 모델의 접속량이 많아 처리가 지연되고 있습니다. 잠시 후 다시 시도해주세요. (503)";
 
 afterEach(() => {
   vi.useRealTimers();
@@ -305,4 +309,101 @@ it("replying to a later chunk emits the response parts only once", async () => {
 
   const contents = bot.gemini.requests[1]?.contents as { role: string }[];
   expect(contents.filter((c) => c.role === "model")).toHaveLength(1);
+});
+
+it("a 503 burst is retried until it succeeds, with no error message", async () => {
+  vi.useFakeTimers();
+  const bot = createTestBot(
+    createFakeGemini(apiError(503), apiError(503), apiError(503), textResponse("복구됨")),
+  );
+  const msg = userMsg({ text: "/gemini 과부하일 때" });
+
+  const done = bot.handlers.onMessage(msg);
+  await vi.runAllTimersAsync();
+  await done;
+
+  expect(bot.gemini.requests).toHaveLength(4);
+  const sends = bot.telegram.callsOf("sendMessage");
+  expect(sends).toHaveLength(1);
+  expect(sends[0]?.text).toBe("복구됨");
+});
+
+it("503s that never clear stop at the attempt cap and answer with the overload copy", async () => {
+  vi.useFakeTimers();
+  const starts: number[] = [];
+  const bot = createTestBot(
+    createFakeGemini(async () => {
+      starts.push(Date.now());
+      throw apiError(503);
+    }),
+  );
+  const msg = userMsg({ text: "/gemini 계속 과부하" });
+
+  const done = bot.handlers.onMessage(msg);
+  await vi.runAllTimersAsync();
+  await done;
+
+  expect(starts).toHaveLength(12);
+  expect(Math.max(...starts) - Math.min(...starts)).toBe(85_000); // 1+2+4+8+10×7
+  const send = bot.telegram.callsOf("sendMessage")[0];
+  expect(send?.text).toBe(OVERLOADED_COPY);
+  expect(send?.other?.reply_markup?.inline_keyboard?.[0]?.[0]).toEqual({
+    text: "🔄 재시도",
+    callback_data: `retry_${msg.message_id}`,
+  });
+});
+
+it("a 429 whose retry hint outlasts the window is not retried", async () => {
+  vi.useFakeTimers();
+  const bot = createTestBot(
+    createFakeGemini(
+      apiError(
+        429,
+        '{"error":{"code":429,"status":"RESOURCE_EXHAUSTED","details":[{"@type":"type.googleapis.com/google.rpc.RetryInfo","retryDelay":"3600s"}]}}',
+      ),
+    ),
+  );
+
+  const done = bot.handlers.onMessage(userMsg({ text: "/gemini 한도 초과" }));
+  await vi.runAllTimersAsync();
+  await done;
+
+  expect(bot.gemini.requests).toHaveLength(1);
+  expect(bot.telegram.callsOf("sendMessage")[0]?.text).toBe(
+    "요청 한도를 초과했습니다. 잠시 후 다시 시도해주세요. (429)",
+  );
+});
+
+it("a persistent 500 gives up inside the 15-second window", async () => {
+  vi.useFakeTimers();
+  const starts: number[] = [];
+  const bot = createTestBot(
+    createFakeGemini(async () => {
+      starts.push(Date.now());
+      throw apiError(500);
+    }),
+  );
+
+  const done = bot.handlers.onMessage(userMsg({ text: "/gemini 서버 오류" }));
+  await vi.runAllTimersAsync();
+  await done;
+
+  expect(starts).toHaveLength(5); // 0, 1, 3, 7, 15s
+  expect(Math.max(...starts) - Math.min(...starts)).toBe(15_000);
+  expect(bot.telegram.callsOf("sendMessage")[0]?.text).toBe("API 오류가 발생했습니다.");
+});
+
+it("a shutdown during a retry wait stops retrying and answers nothing", async () => {
+  vi.useFakeTimers();
+  const bot = createTestBot(createFakeGemini(apiError(503)));
+
+  const done = bot.handlers.onMessage(userMsg({ text: "/gemini 종료 직전" }));
+  await vi.advanceTimersByTimeAsync(0);
+  expect(bot.gemini.requests).toHaveLength(1);
+
+  bot.shutdown.abort();
+  await done;
+
+  expect(bot.gemini.requests).toHaveLength(1);
+  expect(bot.telegram.callsOf("sendMessage")).toHaveLength(0);
 });
